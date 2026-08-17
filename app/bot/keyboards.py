@@ -100,27 +100,39 @@ def admin_provider_detail_kb(provider) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🧪 Test Connection", callback_data=f"admin_provider_test:{provider.id}")],
         [InlineKeyboardButton(text=toggle_text, callback_data=f"admin_provider_toggle:{provider.id}")],
-        [InlineKeyboardButton(text="✏️ Edit", callback_data=f"admin_provider_edit:{provider.id}")],
-        [InlineKeyboardButton(text="🗑️ Delete", callback_data=f"admin_provider_delete_confirm:{provider.id}")],
+        [InlineKeyboardButton(text="✏️ Edit", callback_data=f"ap_edit:{provider.id}")],
+        [InlineKeyboardButton(text="🗑️ Delete", callback_data=f"ap_delc:{provider.id}")],
         [InlineKeyboardButton(text="🔙 Providers List", callback_data="admin_provider_list")],
     ])
 
 
 def admin_provider_delete_confirm_kb(provider_id) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❗ হ্যাঁ, Delete করো", callback_data=f"admin_provider_delete:{provider_id}")],
+        [InlineKeyboardButton(text="❗ হ্যাঁ, Delete করো", callback_data=f"ap_del:{provider_id}")],
         [InlineKeyboardButton(text="🔙 বাতিল", callback_data=f"admin_provider_view:{provider_id}")],
     ])
 
 
+_EDIT_FIELD_CODES = {
+    "nm": "name", "url": "base_url", "key": "api_key",
+    "val": "validation_endpoint", "ord": "order_endpoint",
+    "sts": "status_endpoint", "bal": "balance_endpoint", "pri": "priority",
+}
+EDIT_FIELD_LABELS = {v: k for k, v in {
+    "nm": "Name", "url": "Base URL", "key": "API Key",
+    "val": "Validation Endpoint", "ord": "Order Endpoint",
+    "sts": "Status Endpoint", "bal": "Balance Endpoint", "pri": "Priority",
+}.items()}
+
+
 def admin_provider_edit_field_kb(provider_id) -> InlineKeyboardMarkup:
     fields = [
-        ("Name", "name"), ("Base URL", "base_url"), ("API Key", "api_key"),
-        ("Validation Endpoint", "validation_endpoint"), ("Order Endpoint", "order_endpoint"),
-        ("Status Endpoint", "status_endpoint"), ("Balance Endpoint", "balance_endpoint"),
-        ("Priority", "priority"),
+        ("Name", "nm"), ("Base URL", "url"), ("API Key", "key"),
+        ("Validation Endpoint", "val"), ("Order Endpoint", "ord"),
+        ("Status Endpoint", "sts"), ("Balance Endpoint", "bal"),
+        ("Priority", "pri"),
     ]
-    rows = [[InlineKeyboardButton(text=label, callback_data=f"admin_provider_editfield:{provider_id}:{key}")]
+    rows = [[InlineKeyboardButton(text=label, callback_data=f"ap_ef:{provider_id}:{key}")]
             for label, key in fields]
     rows.append([InlineKeyboardButton(text="🔙 ফিরে যাও", callback_data=f"admin_provider_view:{provider_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)

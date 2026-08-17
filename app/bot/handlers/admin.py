@@ -169,7 +169,19 @@ async def admin_provider_test(callback: CallbackQuery):
         await callback.answer(f"❌ ব্যর্থ: {result['error'][:150]}", show_alert=True)
 
 
-@router.callback_query(F.data.startswith("admin_provider_delete_confirm:"))
+_EDIT_FIELD_MAP = {
+    "nm": "name", "url": "base_url", "key": "api_key",
+    "val": "validation_endpoint", "ord": "order_endpoint",
+    "sts": "status_endpoint", "bal": "balance_endpoint", "pri": "priority",
+}
+_EDIT_FIELD_LABELS = {
+    "nm": "Name", "url": "Base URL", "key": "API Key",
+    "val": "Validation Endpoint", "ord": "Order Endpoint",
+    "sts": "Status Endpoint", "bal": "Balance Endpoint", "pri": "Priority",
+}
+
+
+@router.callback_query(F.data.startswith("ap_delc:"))
 async def admin_provider_delete_confirm(callback: CallbackQuery):
     provider_id = callback.data.split(":", 1)[1]
     async with session_scope() as db:
@@ -182,7 +194,7 @@ async def admin_provider_delete_confirm(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("admin_provider_delete:"))
+@router.callback_query(F.data.startswith("ap_del:"))
 async def admin_provider_delete(callback: CallbackQuery):
     provider_id = callback.data.split(":", 1)[1]
     try:
@@ -195,11 +207,11 @@ async def admin_provider_delete(callback: CallbackQuery):
             parse_mode="HTML", reply_markup=admin_providers_list_kb(providers),
         )
         await callback.answer("✅ Deleted")
-    except Exception as e:
-        await callback.answer(f"❌ Delete ব্যর্থ: এই provider-এর সাথে অন্য ডেটা (যেমন package/order) যুক্ত থাকতে পারে।", show_alert=True)
+    except Exception:
+        await callback.answer("❌ Delete ব্যর্থ: এই provider-এর সাথে অন্য ডেটা (যেমন package/order) যুক্ত থাকতে পারে।", show_alert=True)
 
 
-@router.callback_query(F.data.startswith("admin_provider_edit:"))
+@router.callback_query(F.data.startswith("ap_edit:"))
 async def admin_provider_edit_menu(callback: CallbackQuery):
     provider_id = callback.data.split(":", 1)[1]
     await callback.message.edit_text(
@@ -208,17 +220,13 @@ async def admin_provider_edit_menu(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("admin_provider_editfield:"))
+@router.callback_query(F.data.startswith("ap_ef:"))
 async def admin_provider_editfield_start(callback: CallbackQuery, state: FSMContext):
-    _, provider_id, field = callback.data.split(":", 2)
+    _, provider_id, code = callback.data.split(":", 2)
+    field = _EDIT_FIELD_MAP.get(code, code)
     await state.set_state(AdminEditProviderStates.value)
     await state.update_data(provider_id=provider_id, field=field)
-    labels = {
-        "name": "Name", "base_url": "Base URL", "api_key": "API Key",
-        "validation_endpoint": "Validation Endpoint", "order_endpoint": "Order Endpoint",
-        "status_endpoint": "Status Endpoint", "balance_endpoint": "Balance Endpoint", "priority": "Priority",
-    }
-    await callback.message.answer(f"নতুন মান লিখুন ({labels.get(field, field)}):", reply_markup=admin_cancel_kb())
+    await callback.message.answer(f"নতুন মান লিখুন ({_EDIT_FIELD_LABELS.get(code, code)}):", reply_markup=admin_cancel_kb())
     await callback.answer()
 
 
