@@ -100,8 +100,30 @@ def admin_provider_detail_kb(provider) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🧪 Test Connection", callback_data=f"admin_provider_test:{provider.id}")],
         [InlineKeyboardButton(text=toggle_text, callback_data=f"admin_provider_toggle:{provider.id}")],
+        [InlineKeyboardButton(text="✏️ Edit", callback_data=f"admin_provider_edit:{provider.id}")],
+        [InlineKeyboardButton(text="🗑️ Delete", callback_data=f"admin_provider_delete_confirm:{provider.id}")],
         [InlineKeyboardButton(text="🔙 Providers List", callback_data="admin_provider_list")],
     ])
+
+
+def admin_provider_delete_confirm_kb(provider_id) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❗ হ্যাঁ, Delete করো", callback_data=f"admin_provider_delete:{provider_id}")],
+        [InlineKeyboardButton(text="🔙 বাতিল", callback_data=f"admin_provider_view:{provider_id}")],
+    ])
+
+
+def admin_provider_edit_field_kb(provider_id) -> InlineKeyboardMarkup:
+    fields = [
+        ("Name", "name"), ("Base URL", "base_url"), ("API Key", "api_key"),
+        ("Validation Endpoint", "validation_endpoint"), ("Order Endpoint", "order_endpoint"),
+        ("Status Endpoint", "status_endpoint"), ("Balance Endpoint", "balance_endpoint"),
+        ("Priority", "priority"),
+    ]
+    rows = [[InlineKeyboardButton(text=label, callback_data=f"admin_provider_editfield:{provider_id}:{key}")]
+            for label, key in fields]
+    rows.append([InlineKeyboardButton(text="🔙 ফিরে যাও", callback_data=f"admin_provider_view:{provider_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def admin_provider_code_kb(codes: list[str]) -> InlineKeyboardMarkup:

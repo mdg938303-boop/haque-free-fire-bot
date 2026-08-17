@@ -26,12 +26,13 @@ from app.services.settings_service import get_setting, upsert_setting
 from app.core.security import encrypt_secret
 from app.core.exceptions import AppError
 from app.bot.states import (
-    AdminAddProviderStates, AdminAddPackageStates, AdminAdjustBalanceStates,
+    AdminAddProviderStates, AdminEditProviderStates, AdminAddPackageStates, AdminAdjustBalanceStates,
     AdminBroadcastStates, AdminAddPaymentMethodStates, AdminSettingsStates,
 )
 from app.bot.keyboards import (
     admin_menu_kb, admin_cancel_kb, main_menu_kb,
     admin_providers_list_kb, admin_provider_detail_kb, admin_provider_code_kb,
+    admin_provider_delete_confirm_kb, admin_provider_edit_field_kb,
     admin_packages_list_kb, admin_package_detail_kb, admin_package_provider_select_kb,
     admin_orders_status_filter_kb, admin_order_actions_kb,
     admin_deposit_actions_kb, admin_user_actions_kb, admin_balance_direction_kb,
@@ -168,6 +169,83 @@ async def admin_provider_test(callback: CallbackQuery):
         await callback.answer(f"❌ ব্যর্থ: {result['error'][:150]}", show_alert=True)
 
 
+@router.callback_query(F.data.startswith("admin_provider_delete_confirm:"))
+async def admin_provider_delete_confirm(callback: CallbackQuery):
+    provider_id = callback.data.split(":", 1)[1]
+    async with session_scope() as db:
+        provider = await db.get(ApiProvider, provider_id)
+    await callback.message.edit_text(
+        f"⚠️ তুমি কি নিশ্চিত '{provider.name}' Provider-টা <b>স্থায়ীভাবে মুছে ফেলতে</b> চাও?\n"
+        f"এর সাথে যুক্ত package-mapping গুলোও প্রভাবিত হতে পারে।",
+        parse_mode="HTML", reply_markup=admin_provider_delete_confirm_kb(provider_id),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin_provider_delete:"))
+async def admin_provider_delete(callback: CallbackQuery):
+    provider_id = callback.data.split(":", 1)[1]
+    try:
+        async with session_scope() as db:
+            name = await provider_service.delete_provider(db, provider_id=UUID(provider_id), admin_telegram_id=callback.from_user.id)
+        async with session_scope() as db:
+            providers = (await db.execute(select(ApiProvider).order_by(ApiProvider.priority.asc()))).scalars().all()
+        await callback.message.edit_text(
+            f"🗑️ Provider '{name}' মুছে ফেলা হয়েছে।\n\n🔌 <b>API Providers</b>",
+            parse_mode="HTML", reply_markup=admin_providers_list_kb(providers),
+        )
+        await callback.answer("✅ Deleted")
+    except Exception as e:
+        await callback.answer(f"❌ Delete ব্যর্থ: এই provider-এর সাথে অন্য ডেটা (যেমন package/order) যুক্ত থাকতে পারে।", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("admin_provider_edit:"))
+async def admin_provider_edit_menu(callback: CallbackQuery):
+    provider_id = callback.data.split(":", 1)[1]
+    await callback.message.edit_text(
+        "✏️ কোন ফিল্ড পরিবর্তন করতে চাও?", reply_markup=admin_provider_edit_field_kb(provider_id),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin_provider_editfield:"))
+async def admin_provider_editfield_start(callback: CallbackQuery, state: FSMContext):
+    _, provider_id, field = callback.data.split(":", 2)
+    await state.set_state(AdminEditProviderStates.value)
+    await state.update_data(provider_id=provider_id, field=field)
+    labels = {
+        "name": "Name", "base_url": "Base URL", "api_key": "API Key",
+        "validation_endpoint": "Validation Endpoint", "order_endpoint": "Order Endpoint",
+        "status_endpoint": "Status Endpoint", "balance_endpoint": "Balance Endpoint", "priority": "Priority",
+    }
+    await callback.message.answer(f"নতুন মান লিখুন ({labels.get(field, field)}):", reply_markup=admin_cancel_kb())
+    await callback.answer()
+
+
+@router.message(AdminEditProviderStates.value, F.text)
+async def admin_provider_editfield_save(message: Message, state: FSMContext):
+    data = await state.get_data()
+    provider_id, field = data["provider_id"], data["field"]
+    await state.clear()
+    value = message.text.strip()
+    try:
+        async with session_scope() as db:
+            provider = await provider_service.update_provider_field(
+                db, provider_id=UUID(provider_id), admin_telegram_id=message.from_user.id, field=field, value=value,
+            )
+            masked = provider_service.masked_api_key(provider)
+        text = (
+            f"✅ আপডেট হয়েছে।\n\n🔌 <b>{provider.name}</b>\n\nCode: <code>{provider.code}</code>\n"
+            f"Base URL: {provider.base_url}\nAPI Key: <code>{masked}</code>\nPriority: {provider.priority}\n"
+            f"Status: {'🟢 Active' if provider.is_active else '🔴 Inactive'}"
+        )
+        await message.answer(text, parse_mode="HTML", reply_markup=admin_provider_detail_kb(provider))
+    except AppError as e:
+        await message.answer(f"❌ আপডেট ব্যর্থ: {e.user_message}", reply_markup=admin_menu_kb())
+    except Exception:
+        await message.answer("❌ আপডেট ব্যর্থ — মানটা ঠিক আছে কিনা চেক করো।", reply_markup=admin_menu_kb())
+
+
 @router.callback_query(F.data == "admin_provider_add")
 async def admin_provider_add_start(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminAddProviderStates.name)
@@ -248,15 +326,24 @@ async def admin_provider_add_priority(message: Message, state: FSMContext):
     data = await state.get_data()
     await state.clear()
 
-    async with session_scope() as db:
-        provider = await provider_service.create_provider(
-            db, admin_telegram_id=message.from_user.id, name=data["name"], code=data["code"],
-            base_url=data["base_url"], api_key=data["api_key"],
-            validation_endpoint=data.get("validation_endpoint"), order_endpoint=data.get("order_endpoint"),
-            status_endpoint=data.get("status_endpoint"), balance_endpoint=data.get("balance_endpoint"),
-            priority=priority, is_active=True,
+    try:
+        async with session_scope() as db:
+            provider = await provider_service.create_provider(
+                db, admin_telegram_id=message.from_user.id, name=data["name"], code=data["code"],
+                base_url=data["base_url"], api_key=data["api_key"],
+                validation_endpoint=data.get("validation_endpoint"), order_endpoint=data.get("order_endpoint"),
+                status_endpoint=data.get("status_endpoint"), balance_endpoint=data.get("balance_endpoint"),
+                priority=priority, is_active=True,
+            )
+        await message.answer(f"✅ Provider '{provider.name}' যোগ করা হয়েছে।", reply_markup=admin_menu_kb())
+    except AppError as e:
+        await message.answer(f"❌ Provider যোগ করা যায়নি: {e.user_message}", reply_markup=admin_menu_kb())
+    except Exception:
+        await message.answer(
+            "❌ Provider যোগ করা যায়নি — সম্ভবত এই নামে বা কোডে (code) আগে থেকেই একটা provider আছে। "
+            "আগে পুরনোটা 🔌 Providers থেকে খুলে Delete করে আবার চেষ্টা করুন।",
+            reply_markup=admin_menu_kb(),
         )
-    await message.answer(f"✅ Provider '{provider.name}' যোগ করা হয়েছে।", reply_markup=admin_menu_kb())
 
 
 # ================================================================ PACKAGES =

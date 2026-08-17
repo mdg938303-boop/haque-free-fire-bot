@@ -28,6 +28,10 @@ class AdminAddProviderStates(StatesGroup):
     priority = State()
 
 
+class AdminEditProviderStates(StatesGroup):
+    value = State()
+
+
 class AdminAddPackageStates(StatesGroup):
     name = State()
     diamond_amount = State()

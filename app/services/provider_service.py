@@ -45,6 +45,42 @@ async def create_provider(
     return provider
 
 
+async def delete_provider(db: AsyncSession, *, provider_id: UUID, admin_telegram_id: int) -> str:
+    provider = await db.get(ApiProvider, provider_id)
+    if provider is None:
+        raise AppError(internal_detail="provider not found", user_message="Provider খুঁজে পাওয়া যায়নি।")
+    name = provider.name
+    db.add(AdminLog(admin_telegram_id=admin_telegram_id, action="DELETE_PROVIDER", target_type="api_provider",
+                     target_id=str(provider.id), new_value={"name": name}))
+    await db.delete(provider)
+    await db.flush()
+    return name
+
+
+async def update_provider_field(
+    db: AsyncSession, *, provider_id: UUID, admin_telegram_id: int, field: str, value: str,
+) -> ApiProvider:
+    provider = await db.get(ApiProvider, provider_id)
+    if provider is None:
+        raise AppError(internal_detail="provider not found", user_message="Provider খুঁজে পাওয়া যায়নি।")
+
+    if field == "api_key":
+        provider.api_key_encrypted = encrypt_secret(value)
+    elif field == "priority":
+        provider.priority = int(value) if value.isdigit() else provider.priority
+    elif field in ("validation_endpoint", "order_endpoint", "status_endpoint", "balance_endpoint"):
+        setattr(provider, field, None if value == "-" else value)
+    elif field in ("name", "base_url"):
+        setattr(provider, field, value)
+    else:
+        raise AppError(internal_detail=f"unknown editable field {field}", user_message="অজানা ফিল্ড।")
+
+    db.add(AdminLog(admin_telegram_id=admin_telegram_id, action="UPDATE_PROVIDER", target_type="api_provider",
+                     target_id=str(provider.id), new_value={field: value if field != "api_key" else "***"}))
+    await db.flush()
+    return provider
+
+
 async def toggle_provider(db: AsyncSession, *, provider_id: UUID, admin_telegram_id: int) -> ApiProvider:
     provider = await db.get(ApiProvider, provider_id)
     if provider is None:
