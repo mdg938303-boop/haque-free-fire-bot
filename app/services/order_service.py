@@ -30,7 +30,7 @@ from app.models import (
     TransactionType, User,
 )
 from app.providers.registry import get_adapter
-from app.services import wallet_service
+from app.services import wallet_service, loyalty_service
 from app.core.security import generate_order_number, generate_idempotency_key
 from app.core.exceptions import (
     PackageInactiveError, ValidationError, IdempotencyConflictError,
@@ -76,10 +76,21 @@ async def create_order(
     player_name: str,
     provider_product: ProviderProduct,
     provider: ApiProvider,
+    final_price: Decimal | None = None,
+    discount_amount: Decimal = Decimal("0"),
+    promo_code: str | None = None,
+    vip_discount_percent: Decimal | None = None,
 ) -> Order:
     """Executes steps 5-9. Raises InsufficientBalanceError / IdempotencyConflictError /
     ProviderUnavailableError on failure. On provider failure the order row is still
-    persisted with status=FAILED and the wallet debit is rolled back within this call."""
+    persisted with status=FAILED and the wallet debit is rolled back within this call.
+
+    final_price/discount_amount/promo_code/vip_discount_percent let the caller apply a
+    VIP tier discount and/or a promo code before the wallet is charged; the *base*
+    package.selling_price is still what's used to build the idempotency key so the
+    duplicate-order guard doesn't depend on which discounts happened to be active."""
+
+    charge_price = final_price if final_price is not None else package.selling_price
 
     idempotency_key = generate_idempotency_key(
         "order", str(user.id), str(package.id), uid, str(package.selling_price)
@@ -107,12 +118,15 @@ async def create_order(
         game_uid=uid,
         player_name=player_name,
         product_name_snapshot=package.name,
-        selling_price=package.selling_price,
+        selling_price=charge_price,
         provider_id=provider.id,
         provider_product_id=provider_product.provider_product_id,
         provider_cost_snapshot=provider_product.provider_cost,
         status=OrderStatus.PENDING,
         idempotency_key=idempotency_key,
+        promo_code=promo_code,
+        discount_amount=discount_amount,
+        vip_discount_percent=vip_discount_percent,
     )
     db.add(order)
     try:
@@ -121,14 +135,16 @@ async def create_order(
         await db.rollback()
         raise IdempotencyConflictError(internal_detail="idempotency_key unique constraint hit")
 
-    db.add(OrderLog(order_id=order.id, event="ORDER_CREATED", detail={"idempotency_key": idempotency_key}))
+    db.add(OrderLog(order_id=order.id, event="ORDER_CREATED", detail={
+        "idempotency_key": idempotency_key, "promo_code": promo_code, "discount_amount": str(discount_amount),
+    }))
 
     # Step 6/7: reserve funds BEFORE calling the provider so the user can never be charged
     # by the provider without their wallet reflecting it, even if we crash right after this line.
     await wallet_service.debit_wallet(
         db,
         user_id=user.id,
-        amount=package.selling_price,
+        amount=charge_price,
         txn_type=TransactionType.PURCHASE,
         reference_type="order",
         reference_id=str(order.id),
@@ -162,6 +178,7 @@ async def create_order(
 
     order.provider_order_id = result.provider_order_id
     order.status = OrderStatus(result.status) if result.status in OrderStatus.__members__ else OrderStatus.PROCESSING
+    await loyalty_service.maybe_award_points(db, order=order)
     await db.flush()
     return order
 
@@ -202,9 +219,22 @@ def format_order_card(order: Order) -> str:
         f"💎 {order.product_name_snapshot}",
         f"🆔 UID: {order.game_uid}",
         f"👤 {order.player_name or '-'}",
-        f"💰 ৳{order.selling_price:.0f}",
-        f"{status_emoji} Status: {status_label_bn}",
     ]
+    if order.discount_amount and order.discount_amount > 0:
+        original = order.selling_price + order.discount_amount
+        lines.append(f"💵 মূল্য: ৳{original:.0f} → ছাড়ের পর ৳{order.selling_price:.0f}")
+        discount_bits = []
+        if order.vip_discount_percent:
+            discount_bits.append(f"VIP {order.vip_discount_percent:.0f}%")
+        if order.promo_code:
+            discount_bits.append(f"প্রোমো '{order.promo_code}'")
+        if discount_bits:
+            lines.append(f"🏷️ ছাড়: {' + '.join(discount_bits)}")
+    else:
+        lines.append(f"💰 ৳{order.selling_price:.0f}")
+    lines.append(f"{status_emoji} Status: {status_label_bn}")
+    if order.loyalty_points_earned:
+        lines.append(f"🎯 +{order.loyalty_points_earned} লয়্যালটি পয়েন্ট অর্জিত")
     if order.status == OrderStatus.FAILED or order.status == OrderStatus.CANCELED:
         lines.append(f"⚠️ কারণ: {order.error_message or 'অজানা কারণ'}")
         if order.refunded:
@@ -240,6 +270,7 @@ async def apply_status_update(db: AsyncSession, *, order: Order, new_status: Ord
             )
             order.refunded = True
 
+    await loyalty_service.maybe_award_points(db, order=order)
     await db.flush()
 
 

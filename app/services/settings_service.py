@@ -7,6 +7,7 @@ DEFAULTS = {
                 "currency": "BDT", "maintenance_mode": False},
     "referral": {"enabled": False, "bonus_amount": "0", "min_deposit": "0"},
     "topup": {"order_timeout": 120, "retry_limit": 3, "auto_retry": False},
+    "loyalty": {"cashback_percent": "0", "redeem_rate": "10"},  # redeem_rate = points needed per ৳1
 }
 
 

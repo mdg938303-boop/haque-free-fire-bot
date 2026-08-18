@@ -57,3 +57,28 @@ class PackageInactiveError(AppError):
 class ProviderUnavailableError(AppError):
     code = "PROVIDER_UNAVAILABLE"
     user_message = "⚠️ সাময়িক প্রযুক্তিগত সমস্যা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।"
+
+
+class PromoCodeInvalidError(AppError):
+    code = "PROMO_INVALID"
+    user_message = "❌ প্রোমো কোডটি সঠিক নয় বা মেয়াদ শেষ হয়ে গেছে।"
+
+
+class PromoCodeExhaustedError(AppError):
+    code = "PROMO_EXHAUSTED"
+    user_message = "❌ এই প্রোমো কোডটির ব্যবহারসীমা শেষ হয়ে গেছে।"
+
+
+class PromoCodeAlreadyUsedError(AppError):
+    code = "PROMO_ALREADY_USED"
+    user_message = "❌ আপনি এই প্রোমো কোডটি আগেই ব্যবহার করেছেন।"
+
+
+class PromoCodeMinOrderError(AppError):
+    code = "PROMO_MIN_ORDER"
+    user_message = "❌ এই প্রোমো কোড ব্যবহারের জন্য ন্যূনতম অর্ডার মূল্য পূরণ হয়নি।"
+
+
+class InsufficientPointsError(AppError):
+    code = "INSUFFICIENT_POINTS"
+    user_message = "❌ আপনার পর্যাপ্ত লয়্যালটি পয়েন্ট নেই।"

@@ -28,6 +28,14 @@ async def init_db() -> None:
         for stmt in (
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS telegram_message_id BIGINT",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS promo_code VARCHAR(32)",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(14,2) NOT NULL DEFAULT 0",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS vip_discount_percent NUMERIC(5,2)",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS loyalty_points_earned INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS loyalty_awarded BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS loyalty_points INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS total_cashback NUMERIC(14,2) NOT NULL DEFAULT 0",
+            "ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'CASHBACK'",
         ):
             await conn.execute(text(stmt))
 

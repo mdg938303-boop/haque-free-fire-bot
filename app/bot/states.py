@@ -8,6 +8,11 @@ class UidCheckStates(StatesGroup):
 class PurchaseStates(StatesGroup):
     waiting_uid = State()
     confirming = State()
+    waiting_promo_code = State()
+
+
+class LoyaltyStates(StatesGroup):
+    waiting_redeem_points = State()
 
 
 class DepositStates(StatesGroup):
@@ -63,3 +68,21 @@ class AdminSettingsStates(StatesGroup):
     waiting_referral_min_deposit = State()
     waiting_support_username = State()
     waiting_bot_username = State()
+    waiting_cashback_percent = State()
+    waiting_redeem_rate = State()
+
+
+class AdminAddPromoStates(StatesGroup):
+    code = State()
+    discount_type = State()
+    discount_value = State()
+    max_uses = State()
+    max_uses_per_user = State()
+    min_order_amount = State()
+    valid_days = State()
+
+
+class AdminAddVipTierStates(StatesGroup):
+    name = State()
+    min_total_spent = State()
+    discount_percent = State()

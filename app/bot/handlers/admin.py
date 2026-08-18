@@ -805,6 +805,7 @@ async def admin_settings_menu(message: Message):
     async with session_scope() as db:
         general = await get_setting(db, "general")
         referral = await get_setting(db, "referral")
+        loyalty = await get_setting(db, "loyalty")
 
     text = (
         "⚙️ <b>Settings</b>\n\n"
@@ -813,7 +814,9 @@ async def admin_settings_menu(message: Message):
         f"🚧 Maintenance Mode: {'✅ On' if general.get('maintenance_mode') else '❌ Off'}\n\n"
         f"🎁 Referral: {'✅ On' if referral.get('enabled') else '❌ Off'}\n"
         f"🎁 Bonus: ৳{referral.get('bonus_amount', '0')}\n"
-        f"🎁 Min Deposit: ৳{referral.get('min_deposit', '0')}"
+        f"🎁 Min Deposit: ৳{referral.get('min_deposit', '0')}\n\n"
+        f"🎯 Cashback: {loyalty.get('cashback_percent', '0')}%\n"
+        f"💱 Redeem Rate: {loyalty.get('redeem_rate', '10')} points = ৳1"
     )
     await message.answer(text, parse_mode="HTML", reply_markup=admin_settings_menu_kb())
 
@@ -877,6 +880,60 @@ async def admin_settings_referral_min_save(message: Message, state: FSMContext):
         referral = await get_setting(db, "referral")
         referral["min_deposit"] = str(value)
         await upsert_setting(db, "referral", referral)
+    await message.answer("✅ আপডেট হয়েছে।", reply_markup=admin_menu_kb())
+
+
+@router.callback_query(F.data == "admin_settings_cashback_percent")
+async def admin_settings_cashback_start(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(AdminSettingsStates.waiting_cashback_percent)
+    await callback.message.answer(
+        "🎯 প্রতিটি সম্পন্ন অর্ডারের কত শতাংশ Loyalty Point (Cashback) হিসেবে দেওয়া হবে? (যেমন: 2 মানে 2%, বন্ধ রাখতে 0 দিন)",
+        reply_markup=admin_cancel_kb(),
+    )
+    await callback.answer()
+
+
+@router.message(AdminSettingsStates.waiting_cashback_percent, F.text)
+async def admin_settings_cashback_save(message: Message, state: FSMContext):
+    try:
+        value = Decimal(message.text.strip())
+        if value < 0 or value > 100:
+            raise InvalidOperation
+    except InvalidOperation:
+        await message.answer("❌ ০ থেকে ১০০ এর মধ্যে একটি সংখ্যা দিন।")
+        return
+    await state.clear()
+    async with session_scope() as db:
+        loyalty = await get_setting(db, "loyalty")
+        loyalty["cashback_percent"] = str(value)
+        await upsert_setting(db, "loyalty", loyalty)
+    await message.answer("✅ আপডেট হয়েছে।", reply_markup=admin_menu_kb())
+
+
+@router.callback_query(F.data == "admin_settings_redeem_rate")
+async def admin_settings_redeem_rate_start(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(AdminSettingsStates.waiting_redeem_rate)
+    await callback.message.answer(
+        "💱 কত পয়েন্টে ৳1 পাওয়া যাবে? (যেমন: 10 মানে 10 পয়েন্ট = ৳1)",
+        reply_markup=admin_cancel_kb(),
+    )
+    await callback.answer()
+
+
+@router.message(AdminSettingsStates.waiting_redeem_rate, F.text)
+async def admin_settings_redeem_rate_save(message: Message, state: FSMContext):
+    try:
+        value = Decimal(message.text.strip())
+        if value <= 0:
+            raise InvalidOperation
+    except InvalidOperation:
+        await message.answer("❌ ০ এর বেশি একটি সংখ্যা দিন।")
+        return
+    await state.clear()
+    async with session_scope() as db:
+        loyalty = await get_setting(db, "loyalty")
+        loyalty["redeem_rate"] = str(value)
+        await upsert_setting(db, "loyalty", loyalty)
     await message.answer("✅ আপডেট হয়েছে।", reply_markup=admin_menu_kb())
 
 

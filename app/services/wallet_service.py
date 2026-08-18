@@ -65,6 +65,8 @@ async def credit_wallet(
         wallet.total_referral_income += amount
     elif txn_type == TransactionType.REFUND:
         wallet.total_refund += amount
+    elif txn_type == TransactionType.CASHBACK:
+        wallet.total_cashback += amount
 
     wallet.version += 1
 

@@ -8,8 +8,8 @@ def main_menu_kb() -> ReplyKeyboardMarkup:
         [KeyboardButton(text="💎 ডায়মন্ড কিনুন"), KeyboardButton(text="🔎 চেক UID")],
         [KeyboardButton(text="💰 আমার ব্যালেন্স"), KeyboardButton(text="➕ টাকা জমা দিন")],
         [KeyboardButton(text="📦 আমার অর্ডার"), KeyboardButton(text="💳 লেনদেন")],
-        [KeyboardButton(text="🎁 রেফার & আয়"), KeyboardButton(text="👤 আমার প্রোফাইল")],
-        [KeyboardButton(text="📞 সাপোর্ট")],
+        [KeyboardButton(text="🎁 রেফার & আয়"), KeyboardButton(text="🎯 লয়্যালটি পয়েন্ট")],
+        [KeyboardButton(text="👤 আমার প্রোফাইল"), KeyboardButton(text="📞 সাপোর্ট")],
     ]
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
@@ -34,11 +34,14 @@ def packages_kb(packages: list) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def confirm_purchase_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
+def confirm_purchase_kb(promo_applied: bool = False) -> InlineKeyboardMarkup:
+    rows = [[
         InlineKeyboardButton(text="✅ Confirm Purchase", callback_data="confirm_purchase"),
         InlineKeyboardButton(text="❌ Cancel", callback_data="cancel_purchase"),
-    ]])
+    ]]
+    promo_text = "🏷️ প্রোমো কোড পরিবর্তন করুন" if promo_applied else "🏷️ প্রোমো কোড আছে?"
+    rows.append([InlineKeyboardButton(text=promo_text, callback_data="enter_promo_code")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def insufficient_balance_kb() -> InlineKeyboardMarkup:
@@ -60,12 +63,19 @@ def support_kb(support_username: str) -> InlineKeyboardMarkup:
     ]])
 
 
+def loyalty_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="💱 পয়েন্ট রিডিম করুন", callback_data="redeem_points"),
+    ]])
+
+
 # ============================================================ ADMIN MENU ===
 def admin_menu_kb() -> ReplyKeyboardMarkup:
     rows = [
         [KeyboardButton(text="📊 Dashboard"), KeyboardButton(text="🔌 Providers")],
         [KeyboardButton(text="📦 Packages"), KeyboardButton(text="🛒 Orders")],
         [KeyboardButton(text="💳 Deposits"), KeyboardButton(text="👥 Users")],
+        [KeyboardButton(text="🏷️ Promo Codes"), KeyboardButton(text="👑 VIP Tiers")],
         [KeyboardButton(text="💰 Finance"), KeyboardButton(text="📢 Broadcast")],
         [KeyboardButton(text="⚙️ Settings"), KeyboardButton(text="📝 Logs")],
         [KeyboardButton(text="🔙 User মেনুতে ফিরুন")],
@@ -218,6 +228,8 @@ def admin_settings_menu_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🤖 Set Bot Username", callback_data="admin_settings_bot_username")],
         [InlineKeyboardButton(text="🚧 Maintenance Mode Toggle", callback_data="admin_settings_maintenance_toggle")],
         [InlineKeyboardButton(text="💳 Payment Methods", callback_data="admin_settings_payment_methods")],
+        [InlineKeyboardButton(text="🎯 Set Cashback %", callback_data="admin_settings_cashback_percent")],
+        [InlineKeyboardButton(text="💱 Set Points Redeem Rate", callback_data="admin_settings_redeem_rate")],
     ])
 
 
@@ -228,3 +240,62 @@ def admin_payment_methods_kb(methods: list) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton(text=f"{status} {m.name} ({m.account_number})", callback_data=f"admin_pm_toggle:{m.id}")])
     rows.append([InlineKeyboardButton(text="➕ Add Payment Method", callback_data="admin_pm_add")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# ==================================================== ADMIN: PROMO CODES ===
+def admin_promos_list_kb(promos: list) -> InlineKeyboardMarkup:
+    rows = []
+    for p in promos:
+        status = "🟢" if p.is_active else "🔴"
+        rows.append([InlineKeyboardButton(text=f"{status} {p.code} ({p.used_count}/{p.max_uses or '∞'})", callback_data=f"pm_v:{p.id}")])
+    rows.append([InlineKeyboardButton(text="➕ Add Promo Code", callback_data="pm_add")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_promo_detail_kb(promo) -> InlineKeyboardMarkup:
+    toggle_text = "🔴 Deactivate" if promo.is_active else "🟢 Activate"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=toggle_text, callback_data=f"pm_tog:{promo.id}")],
+        [InlineKeyboardButton(text="🗑️ Delete", callback_data=f"pm_delc:{promo.id}")],
+        [InlineKeyboardButton(text="🔙 Promo List", callback_data="pm_list")],
+    ])
+
+
+def admin_promo_delete_confirm_kb(promo_id) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❗ হ্যাঁ, Delete করো", callback_data=f"pm_del:{promo_id}")],
+        [InlineKeyboardButton(text="🔙 বাতিল", callback_data=f"pm_v:{promo_id}")],
+    ])
+
+
+def admin_promo_discount_type_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="% Percent", callback_data="pm_dt:PERCENT"),
+        InlineKeyboardButton(text="৳ Fixed", callback_data="pm_dt:FIXED"),
+    ]])
+
+
+# ======================================================== ADMIN: VIP TIER ==
+def admin_vip_tiers_list_kb(tiers: list) -> InlineKeyboardMarkup:
+    rows = []
+    for t in tiers:
+        status = "🟢" if t.is_active else "🔴"
+        rows.append([InlineKeyboardButton(text=f"{status} {t.name} (৳{t.min_total_spent:.0f}+, {t.discount_percent:.0f}%)", callback_data=f"vt_v:{t.id}")])
+    rows.append([InlineKeyboardButton(text="➕ Add VIP Tier", callback_data="vt_add")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_vip_tier_detail_kb(tier) -> InlineKeyboardMarkup:
+    toggle_text = "🔴 Deactivate" if tier.is_active else "🟢 Activate"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=toggle_text, callback_data=f"vt_tog:{tier.id}")],
+        [InlineKeyboardButton(text="🗑️ Delete", callback_data=f"vt_delc:{tier.id}")],
+        [InlineKeyboardButton(text="🔙 VIP Tiers List", callback_data="vt_list")],
+    ])
+
+
+def admin_vip_delete_confirm_kb(tier_id) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❗ হ্যাঁ, Delete করো", callback_data=f"vt_del:{tier_id}")],
+        [InlineKeyboardButton(text="🔙 বাতিল", callback_data=f"vt_v:{tier_id}")],
+    ])

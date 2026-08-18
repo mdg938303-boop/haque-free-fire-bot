@@ -8,7 +8,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from app.config import get_settings
 from app.core.logging import setup_logging
-from app.bot.handlers import admin, start, uid_check, purchase, wallet, deposit, orders
+from app.bot.handlers import admin, admin_promo, start, uid_check, purchase, wallet, deposit, orders, loyalty
 from app.services.order_polling_service import poll_open_orders
 from app.services.settings_service import ensure_defaults
 from app.database import session_scope, init_db
@@ -21,12 +21,14 @@ def build_dispatcher() -> Dispatcher:
     # admin router MUST be included first: its AdminFilter only matches configured
     # TELEGRAM_ADMIN_IDS, so non-admin users simply fall through to the routers below.
     dp.include_router(admin.router)
+    dp.include_router(admin_promo.router)
     dp.include_router(start.router)
     dp.include_router(uid_check.router)
     dp.include_router(purchase.router)
     dp.include_router(wallet.router)
     dp.include_router(deposit.router)
     dp.include_router(orders.router)
+    dp.include_router(loyalty.router)
     return dp
 
 

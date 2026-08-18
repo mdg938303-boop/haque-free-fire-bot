@@ -38,6 +38,7 @@ class TransactionType(str, enum.Enum):
     REFERRAL_BONUS = "REFERRAL_BONUS"
     REFUND = "REFUND"
     ADMIN_ADJUSTMENT = "ADMIN_ADJUSTMENT"
+    CASHBACK = "CASHBACK"
 
 
 class TransactionDirection(str, enum.Enum):
@@ -56,6 +57,7 @@ class User(Base):
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
     referred_by_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     referral_code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    loyalty_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -74,6 +76,7 @@ class Wallet(Base):
     total_purchase: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0, nullable=False)
     total_referral_income: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0, nullable=False)
     total_refund: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0, nullable=False)
+    total_cashback: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0, nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # optimistic locking
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -186,6 +189,11 @@ class Order(Base):
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     telegram_chat_id: Mapped[int | None] = mapped_column(BigInteger)
     telegram_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    promo_code: Mapped[str | None] = mapped_column(String(32))
+    discount_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=0, nullable=False)
+    vip_discount_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    loyalty_points_earned: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    loyalty_awarded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -302,3 +310,48 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[dict] = mapped_column(JSONB, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+# ------------------------------------------------------------- promo codes -
+class PromoCode(Base):
+    __tablename__ = "promo_codes"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    code: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
+    discount_type: Mapped[str] = mapped_column(String(10), nullable=False)  # "PERCENT" | "FIXED"
+    discount_value: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    max_uses: Mapped[int | None] = mapped_column(Integer)  # total uses allowed across all users, null = unlimited
+    used_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    max_uses_per_user: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    min_order_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by_admin_telegram_id: Mapped[int | None] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PromoCodeUsage(Base):
+    """One row per redemption -- used to enforce max_uses_per_user and for reporting."""
+    __tablename__ = "promo_code_usages"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    promo_code_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("promo_codes.id"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    order_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("orders.id"), nullable=False)
+    discount_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------- VIP tiers
+class VipTier(Base):
+    """A user qualifies for a tier once their lifetime completed-order spend reaches
+    min_total_spent. The HIGHEST qualifying tier's discount_percent is applied automatically
+    at checkout -- no admin action needed per user."""
+    __tablename__ = "vip_tiers"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    min_total_spent: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
