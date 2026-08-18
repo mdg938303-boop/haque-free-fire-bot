@@ -59,7 +59,7 @@ async def validate_uid_for_package(db: AsyncSession, *, package_id: UUID, uid: s
     provider = (await db.execute(select(ApiProvider).where(ApiProvider.id == provider_product.provider_id))).scalar_one()
     adapter = get_adapter(provider)
 
-    result = await adapter.validate_player(uid, region=package.region)
+    result = await adapter.validate_player(uid, region=package.region, product_id=provider_product.provider_product_id)
     if not result.valid:
         raise ValidationError(
             internal_detail=f"{provider.name} validation failed: {result.error_code} {result.error_message}"

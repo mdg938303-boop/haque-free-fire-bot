@@ -54,10 +54,15 @@ class EpinByAdapter(BaseProviderAdapter):
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8),
            retry=retry_if_exception_type(_RETRYABLE))
-    async def validate_player(self, uid: str, region: str = "BD") -> ValidationResult:
+    async def validate_player(self, uid: str, region: str = "BD", product_id: str | None = None) -> ValidationResult:
         endpoint = self.config.validation_endpoint or "/validate-player"
-        product_id_hint = self.config.extra_config.get("default_validation_product_id")
-        payload = {"product_id": product_id_hint, "player_id": uid}
+        pid = product_id or self.config.extra_config.get("default_validation_product_id")
+        if pid is None:
+            return ValidationResult(
+                valid=False, raw_uid=uid, error_code="NO_PRODUCT_ID",
+                error_message="কোনো EpinBy Product ID পাওয়া যায়নি — এই Package-এর সাথে EpinBy Provider Product ID যুক্ত করা হয়নি।",
+            )
+        payload = {"product_id": int(pid) if str(pid).isdigit() else pid, "player_id": uid}
         async with self._client() as client:
             resp = await client.post(endpoint, headers=self._headers(), json=payload)
         data = resp.json()

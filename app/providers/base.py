@@ -82,8 +82,10 @@ class BaseProviderAdapter(ABC):
         self.config = config
 
     @abstractmethod
-    async def validate_player(self, uid: str, region: str = "BD") -> ValidationResult:
-        """Validate a game UID and return the player's in-game display name."""
+    async def validate_player(self, uid: str, region: str = "BD", product_id: str | None = None) -> ValidationResult:
+        """Validate a game UID and return the player's in-game display name.
+        product_id: the provider-side SKU id (ProviderProduct.provider_product_id) to validate
+        against, when the provider's API requires a product context (e.g. EpinBy)."""
         raise NotImplementedError
 
     @abstractmethod

@@ -4,7 +4,7 @@ from aiogram.types import Message
 from sqlalchemy import select
 
 from app.database import session_scope
-from app.models import ApiProvider
+from app.models import ApiProvider, ProviderProduct
 from app.providers.registry import get_adapter
 from app.bot.states import UidCheckStates
 from app.bot.keyboards import cancel_kb, uid_valid_kb
@@ -29,6 +29,12 @@ async def process_uid_check(message: Message, state: FSMContext):
         provider = (await db.execute(
             select(ApiProvider).where(ApiProvider.is_active == True).order_by(ApiProvider.priority.asc())  # noqa: E712
         )).scalars().first()
+        sample_product = None
+        if provider is not None:
+            sample_product = (await db.execute(
+                select(ProviderProduct)
+                .where(ProviderProduct.provider_id == provider.id, ProviderProduct.is_active == True)  # noqa: E712
+            )).scalars().first()
 
     await state.clear()
 
@@ -36,8 +42,15 @@ async def process_uid_check(message: Message, state: FSMContext):
         await message.answer("⚠️ এই মুহূর্তে সেবাটি বন্ধ আছে। কিছুক্ষণ পর আবার চেষ্টা করুন।")
         return
 
+    if sample_product is None:
+        await message.answer(
+            "⚠️ এখনো কোনো Package/Provider Product সেটআপ করা হয়নি, তাই UID যাচাই করা যাচ্ছে না। "
+            "অ্যাডমিনকে জানান।"
+        )
+        return
+
     adapter = get_adapter(provider)
-    result = await adapter.validate_player(uid)
+    result = await adapter.validate_player(uid, product_id=sample_product.provider_product_id)
 
     if result.valid:
         await message.answer(
