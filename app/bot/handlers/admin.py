@@ -164,7 +164,17 @@ async def admin_provider_test(callback: CallbackQuery):
     async with session_scope() as db:
         result = await provider_service.test_provider_connection(db, provider_id=UUID(provider_id))
     if result["ok"]:
-        await callback.answer(f"✅ Balance: {result['balance']} {result.get('currency', '')}", show_alert=True)
+        secret = result.get("webhook_secret")
+        masked_secret = (secret[:4] + "…" + secret[-4:]) if secret and len(secret) > 8 else (secret or "N/A")
+        detail = (
+            "✅ <b>কানেকশন সফল</b>\n\n"
+            f"User ID: <code>{result.get('user_id', 'N/A')}</code>\n"
+            f"Username: <code>{result.get('username', 'N/A')}</code>\n"
+            f"Balance: <b>{result['balance']} {result.get('currency', '')}</b>\n"
+            f"Webhook Secret: <code>{masked_secret}</code>"
+        )
+        await callback.message.answer(detail, parse_mode="HTML")
+        await callback.answer(f"✅ Balance: {result['balance']} {result.get('currency', '')}")
     else:
         await callback.answer(f"❌ ব্যর্থ: {result['error'][:150]}", show_alert=True)
 

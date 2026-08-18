@@ -99,7 +99,13 @@ async def test_provider_connection(db: AsyncSession, *, provider_id: UUID) -> di
     adapter = get_adapter(provider)
     try:
         balance = await adapter.get_balance()
-        return {"ok": True, "balance": balance.balance, "currency": balance.currency}
+        raw = balance.raw_response if isinstance(balance.raw_response, dict) else {}
+        data = raw.get("data", raw)
+        return {
+            "ok": True, "balance": balance.balance, "currency": balance.currency,
+            "user_id": data.get("user_id"), "username": data.get("username"),
+            "webhook_secret": data.get("webhook_secret"),
+        }
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": str(exc)}
 
