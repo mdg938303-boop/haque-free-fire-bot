@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, User as TgUser
 from sqlalchemy import select, update
@@ -146,6 +147,10 @@ async def receive_uid(message: Message, state: FSMContext):
 
 @router.callback_query(PurchaseStates.confirming, F.data == "enter_promo_code")
 async def ask_promo_code(callback: CallbackQuery, state: FSMContext):
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except TelegramBadRequest:
+        pass
     await state.set_state(PurchaseStates.waiting_promo_code)
     await callback.message.answer("🏷️ আপনার প্রোমো কোড লিখুন:", reply_markup=cancel_kb())
     await callback.answer()
@@ -160,6 +165,13 @@ async def receive_promo_code(message: Message, state: FSMContext):
 
 @router.callback_query(PurchaseStates.confirming, F.data == "confirm_purchase")
 async def confirm_purchase(callback: CallbackQuery, state: FSMContext):
+    # Remove the Confirm/Cancel/Promo buttons immediately so this message can't be
+    # acted on twice while the order is being processed.
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except TelegramBadRequest:
+        pass
+
     data = await state.get_data()
     await state.clear()
 
@@ -237,6 +249,10 @@ async def confirm_purchase(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "cancel_purchase")
 async def cancel_purchase(callback: CallbackQuery, state: FSMContext):
     await state.clear()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except TelegramBadRequest:
+        pass
     await callback.message.answer("❌ অর্ডার বাতিল করা হয়েছে।", reply_markup=main_menu_kb())
     await callback.answer()
 
