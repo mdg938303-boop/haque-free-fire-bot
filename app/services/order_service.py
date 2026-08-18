@@ -87,7 +87,14 @@ async def create_order(
 
     existing = (await db.execute(select(Order).where(Order.idempotency_key == idempotency_key))).scalar_one_or_none()
     if existing is not None:
-        raise IdempotencyConflictError(internal_detail=f"duplicate order attempt, existing order {existing.order_number}")
+        if existing.status in (OrderStatus.PENDING, OrderStatus.PROCESSING):
+            raise IdempotencyConflictError(internal_detail=f"order still in-flight, existing order {existing.order_number}")
+        if existing.status == OrderStatus.COMPLETED:
+            raise IdempotencyConflictError(internal_detail=f"duplicate of completed order {existing.order_number}")
+        # FAILED / CANCELED: that attempt is over and (if it debited the wallet) was refunded,
+        # so the same user+package+UID+price combination must be allowed to try again --
+        # give this new attempt its own key by tagging on the retry count.
+        idempotency_key = f"{idempotency_key}-r{existing.attempt_count + 1}"
 
     order = Order(
         order_number=generate_order_number(),
