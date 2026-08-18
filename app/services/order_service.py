@@ -21,7 +21,7 @@ silently losing money.
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -93,8 +93,12 @@ async def create_order(
             raise IdempotencyConflictError(internal_detail=f"duplicate of completed order {existing.order_number}")
         # FAILED / CANCELED: that attempt is over and (if it debited the wallet) was refunded,
         # so the same user+package+UID+price combination must be allowed to try again --
-        # give this new attempt its own key by tagging on the retry count.
-        idempotency_key = f"{idempotency_key}-r{existing.attempt_count + 1}"
+        # count every previous attempt (original + past retries) sharing this base key so
+        # each new retry gets its own fresh, never-before-used key.
+        prior_attempts = (await db.execute(
+            select(func.count()).select_from(Order).where(Order.idempotency_key.like(f"{idempotency_key}%"))
+        )).scalar_one()
+        idempotency_key = f"{idempotency_key}-r{prior_attempts + 1}"
 
     order = Order(
         order_number=generate_order_number(),
