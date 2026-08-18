@@ -174,6 +174,33 @@ async def _fail_and_refund(db: AsyncSession, order: Order, *, code: str, message
     await db.flush()
 
 
+def format_order_card(order: Order) -> str:
+    """Single source of truth for how an order looks in a Telegram message, used both
+    right after purchase and when the polling service edits the same message in place
+    as the status changes."""
+    status_emoji = {
+        "COMPLETED": "🟢", "PROCESSING": "🟡", "PENDING": "🟡", "FAILED": "🔴", "CANCELED": "🔴",
+    }.get(order.status.value, "🟡")
+    status_label_bn = {
+        "COMPLETED": "সম্পন্ন", "PROCESSING": "প্রসেসিং হচ্ছে", "PENDING": "পেন্ডিং",
+        "FAILED": "ব্যর্থ", "CANCELED": "বাতিল",
+    }.get(order.status.value, order.status.value)
+
+    lines = [
+        f"📦 Order #{order.order_number}",
+        f"💎 {order.product_name_snapshot}",
+        f"🆔 UID: {order.game_uid}",
+        f"👤 {order.player_name or '-'}",
+        f"💰 ৳{order.selling_price:.0f}",
+        f"{status_emoji} Status: {status_label_bn}",
+    ]
+    if order.status == OrderStatus.FAILED or order.status == OrderStatus.CANCELED:
+        lines.append(f"⚠️ কারণ: {order.error_message or 'অজানা কারণ'}")
+        if order.refunded:
+            lines.append("💸 টাকা আপনার ওয়ালেটে ফেরত দেওয়া হয়েছে।")
+    return "\n".join(lines)
+
+
 async def apply_status_update(db: AsyncSession, *, order: Order, new_status: OrderStatus, raw: dict | None = None) -> None:
     """Called from the webhook handler and from admin manual retry/status polling.
     Idempotent: re-applying the same terminal status is a no-op; only transitions into
@@ -185,17 +212,22 @@ async def apply_status_update(db: AsyncSession, *, order: Order, new_status: Ord
     order.status = new_status
     db.add(OrderLog(order_id=order.id, event="STATUS_UPDATE", detail={"from": previous.value, "to": new_status.value, "raw": raw}))
 
-    if new_status in (OrderStatus.FAILED, OrderStatus.CANCELED) and order.wallet_deducted and not order.refunded:
-        await wallet_service.credit_wallet(
-            db,
-            user_id=order.user_id,
-            amount=order.selling_price,
-            txn_type=TransactionType.REFUND,
-            reference_type="order",
-            reference_id=str(order.id),
-            note=f"Refund for {new_status.value.lower()} order {order.order_number}",
-        )
-        order.refunded = True
+    if new_status in (OrderStatus.FAILED, OrderStatus.CANCELED):
+        if not order.error_message:
+            d = (raw or {}).get("data", raw or {})
+            err = d.get("error") if isinstance(d, dict) else None
+            order.error_message = (err.get("message") if isinstance(err, dict) else None) or "প্রোভাইডার থেকে অর্ডার প্রক্রিয়া ব্যর্থ হয়েছে।"
+        if order.wallet_deducted and not order.refunded:
+            await wallet_service.credit_wallet(
+                db,
+                user_id=order.user_id,
+                amount=order.selling_price,
+                txn_type=TransactionType.REFUND,
+                reference_type="order",
+                reference_id=str(order.id),
+                note=f"Refund for {new_status.value.lower()} order {order.order_number}",
+            )
+            order.refunded = True
 
     await db.flush()
 
