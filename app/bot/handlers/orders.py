@@ -4,13 +4,10 @@ from sqlalchemy import select, desc
 
 from app.database import session_scope
 from app.models import Order
+from app.services.order_service import format_order_card
 from app.bot.handlers.start import get_or_create_user
 
 router = Router(name="orders")
-
-STATUS_EMOJI = {
-    "PENDING": "🟡", "PROCESSING": "🟡", "COMPLETED": "🟢", "FAILED": "🔴", "CANCELED": "⚪️",
-}
 
 
 @router.message(F.text == "📦 আমার অর্ডার")
@@ -25,15 +22,5 @@ async def my_orders(message: Message):
         await message.answer("📭 আপনার কোনো অর্ডার নেই।")
         return
 
-    lines = []
-    for o in orders:
-        emoji = STATUS_EMOJI.get(o.status.value, "🟡")
-        lines.append(
-            f"📦 Order #{o.order_number}\n"
-            f"💎 {o.product_name_snapshot}\n"
-            f"🆔 UID: {o.game_uid}\n"
-            f"👤 {o.player_name or '-'}\n"
-            f"💰 ৳{o.selling_price:.0f}\n"
-            f"{emoji} {o.status.value}\n"
-        )
-    await message.answer("\n".join(lines))
+    lines = [format_order_card(o) for o in orders]
+    await message.answer("\n\n".join(lines))

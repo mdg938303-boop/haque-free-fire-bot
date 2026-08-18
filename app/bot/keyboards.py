@@ -18,11 +18,8 @@ def cancel_kb() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="🔙 ফিরে যান")]], resize_keyboard=True)
 
 
-def uid_valid_kb(package_id: str | None = None) -> InlineKeyboardMarkup:
-    if package_id:
-        buttons = [[InlineKeyboardButton(text="💎 এই UID-তে Diamond কিনুন", callback_data=f"buy_for_uid:{package_id}")]]
-    else:
-        buttons = [[InlineKeyboardButton(text="💎 এই UID-তে Diamond কিনুন", callback_data="buy_for_uid:choose")]]
+def uid_valid_kb(uid: str) -> InlineKeyboardMarkup:
+    buttons = [[InlineKeyboardButton(text="💎 এই UID-তে Diamond কিনুন", callback_data=f"buy_for_uid:{uid}")]]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

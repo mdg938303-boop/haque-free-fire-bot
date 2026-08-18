@@ -30,11 +30,11 @@ def build_dispatcher() -> Dispatcher:
     return dp
 
 
-async def _order_status_poll_loop() -> None:
+async def _order_status_poll_loop(bot: "Bot") -> None:
     settings = get_settings()
     while True:
         try:
-            await poll_open_orders()
+            await poll_open_orders(bot)
         except Exception:  # noqa: BLE001 - one bad poll cycle must never kill the loop
             logger.exception("Order status poll cycle failed")
         await asyncio.sleep(settings.ORDER_POLL_INTERVAL_SECONDS)
@@ -54,7 +54,7 @@ async def run_polling() -> None:
     logger.info("Starting Telegram bot polling + order status poller...")
     await bot.delete_webhook(drop_pending_updates=True)
 
-    poll_task = asyncio.create_task(_order_status_poll_loop())
+    poll_task = asyncio.create_task(_order_status_poll_loop(bot))
     try:
         await dp.start_polling(bot)
     finally:

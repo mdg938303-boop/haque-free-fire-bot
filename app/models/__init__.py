@@ -184,6 +184,8 @@ class Order(Base):
     wallet_deducted: Mapped[bool] = mapped_column(Boolean, default=False)
     refunded: Mapped[bool] = mapped_column(Boolean, default=False)
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
+    telegram_chat_id: Mapped[int | None] = mapped_column(BigInteger)
+    telegram_message_id: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

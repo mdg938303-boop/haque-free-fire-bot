@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("Starting Telegram bot polling + order status poller as background tasks...")
     bot_task = asyncio.create_task(dp.start_polling(bot))
-    poll_task = asyncio.create_task(_order_status_poll_loop())
+    poll_task = asyncio.create_task(_order_status_poll_loop(bot))
     _background_tasks.extend([bot_task, poll_task])
 
     yield

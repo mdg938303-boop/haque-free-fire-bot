@@ -55,7 +55,7 @@ async def process_uid_check(message: Message, state: FSMContext):
     if result.valid:
         await message.answer(
             f"✅ UID Valid\n\n🆔 UID: {uid}\n👤 Player Name: {result.player_name}",
-            reply_markup=uid_valid_kb(),
+            reply_markup=uid_valid_kb(uid),
         )
     else:
         await message.answer("❌ UID যাচাই করা যায়নি।\n\nসঠিক UID দিয়ে আবার চেষ্টা করুন।")

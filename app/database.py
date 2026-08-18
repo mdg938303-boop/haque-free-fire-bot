@@ -15,17 +15,21 @@ class Base(DeclarativeBase):
 
 
 async def init_db() -> None:
-    """Creates every table from app.models if it doesn't already exist yet.
-
-    This replaces needing to run `alembic upgrade head` by hand -- useful when you have
-    no shell access (e.g. Render's free tier has no Shell tab, mobile-only workflows).
-    It is safe to call on every startup: create_all() is a no-op for tables that already
-    exist. Alembic migration files are still included in the repo for later, once you
-    have terminal access and want proper schema-change tracking.
+    """Creates every table from app.models if it doesn't already exist yet, then applies
+    a small set of additive, idempotent ALTER TABLE statements for columns added after the
+    table already existed in production (create_all() only creates missing *tables*, it never
+    alters existing ones). This keeps the mobile-only / no-shell-access deploy workflow working
+    without needing `alembic upgrade head`.
     """
     from app import models  # noqa: F401  ensure all models are registered on Base.metadata
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        from sqlalchemy import text
+        for stmt in (
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT",
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS telegram_message_id BIGINT",
+        ):
+            await conn.execute(text(stmt))
 
 
 async def get_db() -> AsyncSession:

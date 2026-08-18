@@ -9,6 +9,8 @@ normal user-driven order creation because apply_status_update() is idempotent.
 """
 import logging
 
+from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest
 from sqlalchemy import select
 
 from app.database import session_scope
@@ -21,7 +23,7 @@ logger = logging.getLogger("order_poller")
 OPEN_STATUSES = (OrderStatus.PENDING, OrderStatus.PROCESSING)
 
 
-async def poll_open_orders() -> None:
+async def poll_open_orders(bot: Bot | None = None) -> None:
     async with session_scope() as db:
         orders = (await db.execute(
             select(Order).where(Order.status.in_(OPEN_STATUSES), Order.provider_order_id.isnot(None))
@@ -49,7 +51,17 @@ async def poll_open_orders() -> None:
                 except ValueError:
                     new_status = OrderStatus.PROCESSING
 
+                status_changed = new_status != order.status
                 await order_service.apply_status_update(db, order=order, new_status=new_status, raw=result.raw_response)
+
+                if status_changed and bot is not None and order.telegram_chat_id and order.telegram_message_id:
+                    try:
+                        await bot.edit_message_text(
+                            chat_id=order.telegram_chat_id, message_id=order.telegram_message_id,
+                            text=order_service.format_order_card(order),
+                        )
+                    except TelegramBadRequest:
+                        pass  # message deleted / not modified / too old to edit -- non-fatal
             except Exception as exc:  # noqa: BLE001 - one bad order must not stop the whole poll cycle
                 logger.error("Poll failed for order %s: %s", order.order_number, exc)
                 continue
