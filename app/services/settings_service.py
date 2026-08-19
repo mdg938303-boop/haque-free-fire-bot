@@ -6,7 +6,7 @@ DEFAULTS = {
     "general": {"bot_name": "Free Fire Top-Up", "bot_username": "", "support_username": "support",
                 "currency": "BDT", "maintenance_mode": False},
     "referral": {"enabled": False, "bonus_amount": "0", "min_deposit": "0"},
-    "topup": {"order_timeout": 120, "retry_limit": 3, "auto_retry": False, "cancel_window_seconds": 120},
+    "topup": {"order_timeout": 120, "retry_limit": 3, "auto_retry": False, "cancel_window_seconds": 120, "max_bulk_uids": 20},
     "loyalty": {"cashback_percent": "0", "redeem_rate": "10"},  # redeem_rate = points needed per ৳1
 }
 

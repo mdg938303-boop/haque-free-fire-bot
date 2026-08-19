@@ -392,3 +392,19 @@ class OrderReview(Base):
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
     comment: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ------------------------------------------------------- scheduled broadcast
+class ScheduledBroadcast(Base):
+    __tablename__ = "scheduled_broadcasts"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    target: Mapped[str] = mapped_column(String(20), nullable=False)  # "all" | "depositors" | "buyers"
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="PENDING", nullable=False)  # PENDING | SENT | CANCELED
+    created_by_admin_telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

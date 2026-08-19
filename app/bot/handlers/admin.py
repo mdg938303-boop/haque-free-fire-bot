@@ -4,7 +4,9 @@ Access control: only Telegram accounts whose numeric ID is listed in
 settings.TELEGRAM_ADMIN_IDS ever match this router (see AdminFilter below) --
 everyone else's messages fall through untouched to the normal user handlers.
 """
+import asyncio
 import json
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
@@ -21,7 +23,7 @@ from app.models import (
     ApiProvider, Package, ProviderProduct, Referral, AdminLog, WalletTransaction,
     TransactionType, TransactionDirection,
 )
-from app.services import wallet_service, provider_service, deposit_service, order_service
+from app.services import wallet_service, provider_service, deposit_service, order_service, broadcast_service
 from app.services.settings_service import get_setting, upsert_setting
 from app.core.security import encrypt_secret
 from app.core.exceptions import AppError
@@ -37,6 +39,7 @@ from app.bot.keyboards import (
     admin_orders_status_filter_kb, admin_order_actions_kb,
     admin_deposit_actions_kb, admin_user_actions_kb, admin_balance_direction_kb,
     admin_broadcast_target_kb, admin_settings_menu_kb, admin_payment_methods_kb,
+    admin_broadcast_schedule_choice_kb, admin_scheduled_broadcasts_list_kb,
 )
 
 settings = get_settings()
@@ -746,6 +749,27 @@ async def admin_broadcast_start(message: Message):
     await message.answer("📢 কাদের পাঠাবেন?", reply_markup=admin_broadcast_target_kb())
 
 
+@router.callback_query(F.data == "admin_broadcast_scheduled_list")
+async def admin_broadcast_scheduled_list(callback: CallbackQuery):
+    async with session_scope() as db:
+        rows = await broadcast_service.list_pending(db)
+    await callback.message.answer("📋 <b>শিডিউল করা Broadcast</b>", parse_mode="HTML", reply_markup=admin_scheduled_broadcasts_list_kb(rows))
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin_broadcast_cancel:"))
+async def admin_broadcast_cancel(callback: CallbackQuery):
+    broadcast_id = callback.data.split(":", 1)[1]
+    async with session_scope() as db:
+        await broadcast_service.cancel_scheduled(db, broadcast_id=UUID(broadcast_id))
+        rows = await broadcast_service.list_pending(db)
+    await callback.message.edit_text(
+        "✅ বাতিল করা হয়েছে।\n\n📋 <b>শিডিউল করা Broadcast</b>", parse_mode="HTML",
+        reply_markup=admin_scheduled_broadcasts_list_kb(rows),
+    )
+    await callback.answer("✅ Canceled")
+
+
 @router.callback_query(F.data.startswith("admin_broadcast_target:"))
 async def admin_broadcast_target(callback: CallbackQuery, state: FSMContext):
     target = callback.data.split(":", 1)[1]
@@ -756,47 +780,51 @@ async def admin_broadcast_target(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(AdminBroadcastStates.waiting_message, F.text)
-async def admin_broadcast_send(message: Message, state: FSMContext):
+async def admin_broadcast_message_received(message: Message, state: FSMContext):
+    await state.update_data(broadcast_text=message.text)
+    await message.answer("কখন পাঠাবেন?", reply_markup=admin_broadcast_schedule_choice_kb())
+
+
+@router.callback_query(AdminBroadcastStates.waiting_message, F.data == "admin_broadcast_now")
+async def admin_broadcast_send_now(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    target = data["broadcast_target"]
-    text = message.text
+    target, text = data["broadcast_target"], data["broadcast_text"]
     await state.clear()
 
-    await message.answer("📤 Broadcast শুরু হয়েছে ব্যাকগ্রাউন্ডে... সম্পূর্ণ হলে জানানো হবে।", reply_markup=admin_menu_kb())
+    await callback.message.answer("📤 Broadcast শুরু হয়েছে ব্যাকগ্রাউন্ডে... সম্পূর্ণ হলে জানানো হবে।", reply_markup=admin_menu_kb())
+    asyncio.create_task(broadcast_service.run_immediate_broadcast(
+        bot=callback.bot, target=target, text=text, notify_admin_id=callback.from_user.id,
+    ))
+    await callback.answer()
 
-    import asyncio
-    asyncio.create_task(_run_broadcast(bot=message.bot, target=target, text=text, notify_admin_id=message.from_user.id))
+
+@router.callback_query(AdminBroadcastStates.waiting_message, F.data == "admin_broadcast_schedule")
+async def admin_broadcast_ask_schedule(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(AdminBroadcastStates.waiting_schedule_minutes)
+    await callback.message.answer("⏰ কত মিনিট পরে পাঠাতে চান? (যেমন: 60 মানে ১ ঘণ্টা পর):", reply_markup=admin_cancel_kb())
+    await callback.answer()
 
 
-async def _run_broadcast(*, bot, target: str, text: str, notify_admin_id: int) -> None:
-    from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
-    import asyncio
+@router.message(AdminBroadcastStates.waiting_schedule_minutes, F.text)
+async def admin_broadcast_schedule_save(message: Message, state: FSMContext):
+    v = message.text.strip()
+    if not v.isdigit() or int(v) <= 0:
+        await message.answer("❌ ০ এর বেশি একটি সংখ্যা (মিনিট) দিন।")
+        return
+
+    data = await state.get_data()
+    await state.clear()
+    target, text = data["broadcast_target"], data["broadcast_text"]
+    scheduled_at = datetime.now(timezone.utc) + timedelta(minutes=int(v))
 
     async with session_scope() as db:
-        stmt = select(User).where(User.is_banned == False)  # noqa: E712
-        if target == "depositors":
-            stmt = stmt.join(Wallet).where(Wallet.total_deposit > 0)
-        elif target == "buyers":
-            stmt = stmt.join(Wallet).where(Wallet.total_purchase > 0)
-        users = (await db.execute(stmt)).scalars().all()
-
-    sent, failed = 0, 0
-    for user in users:
-        try:
-            await bot.send_message(chat_id=user.telegram_id, text=text)
-            sent += 1
-        except TelegramRetryAfter as exc:
-            await asyncio.sleep(exc.retry_after)
-        except TelegramForbiddenError:
-            failed += 1
-        except Exception:  # noqa: BLE001
-            failed += 1
-        await asyncio.sleep(0.04)  # ~25 msg/sec, safely under Telegram's global rate limit
-
-    try:
-        await bot.send_message(chat_id=notify_admin_id, text=f"✅ Broadcast সম্পন্ন।\nSent: {sent}\nFailed: {failed}")
-    except Exception:  # noqa: BLE001
-        pass
+        await broadcast_service.create_scheduled(
+            db, target=target, message=text, scheduled_at=scheduled_at, admin_telegram_id=message.from_user.id,
+        )
+    await message.answer(
+        f"✅ Broadcast শিডিউল করা হয়েছে। {v} মিনিট পরে ({scheduled_at.strftime('%d %b %H:%M UTC')}) পাঠানো হবে।",
+        reply_markup=admin_menu_kb(),
+    )
 
 
 # ================================================================ SETTINGS =

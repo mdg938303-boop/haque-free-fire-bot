@@ -67,6 +67,7 @@ class AdminAdjustBalanceStates(StatesGroup):
 
 class AdminBroadcastStates(StatesGroup):
     waiting_message = State()
+    waiting_schedule_minutes = State()
 
 
 class AdminAddPaymentMethodStates(StatesGroup):
@@ -99,3 +100,8 @@ class AdminAddVipTierStates(StatesGroup):
     name = State()
     min_total_spent = State()
     discount_percent = State()
+
+
+class BulkPurchaseStates(StatesGroup):
+    waiting_uids = State()
+    confirming = State()

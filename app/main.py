@@ -20,7 +20,7 @@ from fastapi import FastAPI
 
 from app.config import get_settings
 from app.core.logging import setup_logging
-from app.bot.bot import build_dispatcher, _order_status_poll_loop
+from app.bot.bot import build_dispatcher, _order_status_poll_loop, _broadcast_dispatch_loop
 from app.services.settings_service import ensure_defaults
 from app.database import session_scope, init_db
 
@@ -50,7 +50,8 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Telegram bot polling + order status poller as background tasks...")
     bot_task = asyncio.create_task(dp.start_polling(bot))
     poll_task = asyncio.create_task(_order_status_poll_loop(bot))
-    _background_tasks.extend([bot_task, poll_task])
+    broadcast_task = asyncio.create_task(_broadcast_dispatch_loop(bot))
+    _background_tasks.extend([bot_task, poll_task, broadcast_task])
 
     yield
 

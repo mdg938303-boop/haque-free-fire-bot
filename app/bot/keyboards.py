@@ -6,10 +6,11 @@ from aiogram.types import (
 def main_menu_kb() -> ReplyKeyboardMarkup:
     rows = [
         [KeyboardButton(text="💎 ডায়মন্ড কিনুন"), KeyboardButton(text="🔎 চেক UID")],
-        [KeyboardButton(text="💰 আমার ব্যালেন্স"), KeyboardButton(text="➕ টাকা জমা দিন")],
-        [KeyboardButton(text="📦 আমার অর্ডার"), KeyboardButton(text="💳 লেনদেন")],
-        [KeyboardButton(text="🎁 রেফার & আয়"), KeyboardButton(text="🎯 লয়্যালটি পয়েন্ট")],
-        [KeyboardButton(text="👤 আমার প্রোফাইল"), KeyboardButton(text="📞 সাপোর্ট")],
+        [KeyboardButton(text="🎁 বাল্ক অর্ডার"), KeyboardButton(text="💰 আমার ব্যালেন্স")],
+        [KeyboardButton(text="➕ টাকা জমা দিন"), KeyboardButton(text="📦 আমার অর্ডার")],
+        [KeyboardButton(text="💳 লেনদেন"), KeyboardButton(text="🎁 রেফার & আয়")],
+        [KeyboardButton(text="🎯 লয়্যালটি পয়েন্ট"), KeyboardButton(text="👤 আমার প্রোফাইল")],
+        [KeyboardButton(text="📞 সাপোর্ট")],
     ]
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
 
@@ -28,6 +29,17 @@ def packages_kb(packages: list) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(
             text=f"💎 {p.diamond_amount} Diamonds — ৳{p.selling_price:.0f}",
             callback_data=f"select_package:{p.id}",
+        )]
+        for p in packages
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def bulk_packages_kb(packages: list) -> InlineKeyboardMarkup:
+    buttons = [
+        [InlineKeyboardButton(
+            text=f"💎 {p.diamond_amount} Diamonds — ৳{p.selling_price:.0f}",
+            callback_data=f"bulk_select_package:{p.id}",
         )]
         for p in packages
     ]
@@ -217,7 +229,24 @@ def admin_broadcast_target_kb() -> InlineKeyboardMarkup:
     targets = [("all", "All Users"), ("active", "Active Users"), ("depositors", "Depositors"), ("buyers", "Diamond Buyers")]
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=label, callback_data=f"admin_broadcast_target:{key}")] for key, label in targets
-    ])
+    ] + [[InlineKeyboardButton(text="📋 শিডিউল করা Broadcast দেখুন", callback_data="admin_broadcast_scheduled_list")]])
+
+
+def admin_broadcast_schedule_choice_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🚀 এখনই পাঠান", callback_data="admin_broadcast_now"),
+        InlineKeyboardButton(text="⏰ শিডিউল করুন", callback_data="admin_broadcast_schedule"),
+    ]])
+
+
+def admin_scheduled_broadcasts_list_kb(rows: list) -> InlineKeyboardMarkup:
+    kb_rows = []
+    for r in rows:
+        label = f"⏰ {r.scheduled_at.strftime('%d %b %H:%M')} — {r.target} ({r.message[:20]}…)"
+        kb_rows.append([InlineKeyboardButton(text=label, callback_data=f"admin_broadcast_cancel:{r.id}")])
+    if not kb_rows:
+        kb_rows = [[InlineKeyboardButton(text="(কোনো শিডিউল করা Broadcast নেই)", callback_data="noop")]]
+    return InlineKeyboardMarkup(inline_keyboard=kb_rows)
 
 
 def admin_settings_menu_kb() -> InlineKeyboardMarkup:
@@ -362,3 +391,11 @@ def admin_ticket_detail_kb(ticket) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton(text="✅ Close Ticket", callback_data=f"adm_tkt_close:{ticket.id}")])
     rows.append([InlineKeyboardButton(text="🔙 Ticket List", callback_data="adm_tkt_list")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# ============================================================ BULK PURCHASE
+def bulk_confirm_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Confirm Bulk Purchase", callback_data="bulk_confirm"),
+        InlineKeyboardButton(text="❌ Cancel", callback_data="bulk_cancel"),
+    ]])
