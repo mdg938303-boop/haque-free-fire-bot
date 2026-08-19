@@ -194,6 +194,7 @@ class Order(Base):
     vip_discount_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
     loyalty_points_earned: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     loyalty_awarded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    review_prompted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -354,4 +355,40 @@ class VipTier(Base):
     min_total_spent: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     discount_percent: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ------------------------------------------------------------ support desk -
+class SupportTicket(Base):
+    __tablename__ = "support_tickets"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="OPEN", nullable=False)  # OPEN | CLOSED
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SupportMessage(Base):
+    __tablename__ = "support_messages"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    ticket_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("support_tickets.id"), nullable=False, index=True)
+    sender_type: Mapped[str] = mapped_column(String(10), nullable=False)  # "user" | "admin"
+    sender_telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ------------------------------------------------------------ order review -
+class OrderReview(Base):
+    __tablename__ = "order_reviews"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    order_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("orders.id"), unique=True, nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    comment: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

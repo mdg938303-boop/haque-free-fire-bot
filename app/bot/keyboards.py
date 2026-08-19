@@ -76,6 +76,7 @@ def admin_menu_kb() -> ReplyKeyboardMarkup:
         [KeyboardButton(text="📦 Packages"), KeyboardButton(text="🛒 Orders")],
         [KeyboardButton(text="💳 Deposits"), KeyboardButton(text="👥 Users")],
         [KeyboardButton(text="🏷️ Promo Codes"), KeyboardButton(text="👑 VIP Tiers")],
+        [KeyboardButton(text="🎫 Support Tickets"), KeyboardButton(text="⭐ Reviews")],
         [KeyboardButton(text="💰 Finance"), KeyboardButton(text="📢 Broadcast")],
         [KeyboardButton(text="⚙️ Settings"), KeyboardButton(text="📝 Logs")],
         [KeyboardButton(text="🔙 User মেনুতে ফিরুন")],
@@ -299,3 +300,65 @@ def admin_vip_delete_confirm_kb(tier_id) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="❗ হ্যাঁ, Delete করো", callback_data=f"vt_del:{tier_id}")],
         [InlineKeyboardButton(text="🔙 বাতিল", callback_data=f"vt_v:{tier_id}")],
     ])
+
+
+# ======================================================= ORDER CANCEL/RATE =
+def order_cancel_kb(order_id) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ অর্ডার বাতিল করুন", callback_data=f"cancel_order:{order_id}")
+    ]])
+
+
+def rating_kb(order_id) -> InlineKeyboardMarkup:
+    row = [InlineKeyboardButton(text="⭐" * n, callback_data=f"rate_order:{order_id}:{n}") for n in range(1, 6)]
+    return InlineKeyboardMarkup(inline_keyboard=[row])
+
+
+def review_comment_kb(order_id) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="💬 মন্তব্য যোগ করুন (ঐচ্ছিক)", callback_data=f"review_comment:{order_id}")
+    ]])
+
+
+# ============================================================== SUPPORT ====
+def support_menu_kb(support_username: str) -> InlineKeyboardMarkup:
+    username = support_username.lstrip("@")
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💬 নতুন টিকেট খুলুন", callback_data="support_new_ticket")],
+        [InlineKeyboardButton(text="📋 আমার টিকেট", callback_data="support_my_tickets")],
+        [InlineKeyboardButton(text="📞 সরাসরি যোগাযোগ", url=f"https://t.me/{username}")],
+    ])
+
+
+def support_tickets_list_kb(tickets) -> InlineKeyboardMarkup:
+    rows = []
+    for t in tickets:
+        status = "🟢" if t.status == "OPEN" else "⚪"
+        rows.append([InlineKeyboardButton(text=f"{status} {t.subject}", callback_data=f"support_ticket_view:{t.id}")])
+    if not rows:
+        rows = [[InlineKeyboardButton(text="(কোনো টিকেট নেই)", callback_data="noop")]]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def support_ticket_detail_kb(ticket) -> InlineKeyboardMarkup:
+    rows = []
+    if ticket.status == "OPEN":
+        rows.append([InlineKeyboardButton(text="✍️ উত্তর দিন", callback_data=f"support_reply:{ticket.id}")])
+    rows.append([InlineKeyboardButton(text="🔙 আমার টিকেট", callback_data="support_my_tickets")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# ======================================================= ADMIN: SUPPORT ====
+def admin_support_tickets_list_kb(tickets) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=f"🎫 {t.subject}", callback_data=f"adm_tkt_v:{t.id}")] for t in tickets]
+    if not rows:
+        rows = [[InlineKeyboardButton(text="(কোনো ওপেন টিকেট নেই)", callback_data="noop")]]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_ticket_detail_kb(ticket) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text="✍️ Reply", callback_data=f"adm_tkt_reply:{ticket.id}")]]
+    if ticket.status == "OPEN":
+        rows.append([InlineKeyboardButton(text="✅ Close Ticket", callback_data=f"adm_tkt_close:{ticket.id}")])
+    rows.append([InlineKeyboardButton(text="🔙 Ticket List", callback_data="adm_tkt_list")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)

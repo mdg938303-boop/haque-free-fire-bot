@@ -8,10 +8,13 @@ from sqlalchemy import select, update
 
 from app.database import session_scope
 from app.models import Package, Order
-from app.services import order_service, wallet_service, vip_service, promo_service
+from app.services import order_service, wallet_service, vip_service, promo_service, review_service
 from app.core.exceptions import AppError
-from app.bot.states import PurchaseStates
-from app.bot.keyboards import packages_kb, cancel_kb, confirm_purchase_kb, insufficient_balance_kb, main_menu_kb
+from app.bot.states import PurchaseStates, ReviewStates
+from app.bot.keyboards import (
+    packages_kb, cancel_kb, confirm_purchase_kb, insufficient_balance_kb, main_menu_kb,
+    order_cancel_kb, rating_kb, review_comment_kb,
+)
 from app.bot.handlers.start import get_or_create_user
 
 router = Router(name="purchase")
@@ -231,8 +234,14 @@ async def confirm_purchase(callback: CallbackQuery, state: FSMContext):
 
         card_text = order_service.format_order_card(order)
         order_id = order.id
+        is_cancelable = await order_service.is_order_cancelable(db, order)
+        needs_review = await review_service.needs_review_prompt(order)
+        if needs_review:
+            await review_service.mark_review_prompted(db, order=order)
+        order_status = order.status
 
-    sent = await callback.message.answer(card_text, reply_markup=main_menu_kb())
+    card_kb = order_cancel_kb(order_id) if is_cancelable else None
+    sent = await callback.message.answer(card_text, reply_markup=card_kb)
 
     # Remember which chat/message this order's card lives in, so the background poller
     # can edit this same message in place once the status changes (PROCESSING -> COMPLETED/FAILED)
@@ -245,6 +254,9 @@ async def confirm_purchase(callback: CallbackQuery, state: FSMContext):
         )
     await callback.answer()
 
+    if needs_review:
+        await callback.message.answer("✅ অর্ডার সম্পন্ন হয়েছে! কেমন লাগলো, রেটিং দিন:", reply_markup=rating_kb(order_id))
+
 
 @router.callback_query(F.data == "cancel_purchase")
 async def cancel_purchase(callback: CallbackQuery, state: FSMContext):
@@ -255,6 +267,69 @@ async def cancel_purchase(callback: CallbackQuery, state: FSMContext):
         pass
     await callback.message.answer("❌ অর্ডার বাতিল করা হয়েছে।", reply_markup=main_menu_kb())
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("cancel_order:"))
+async def cancel_placed_order(callback: CallbackQuery):
+    order_id = callback.data.split(":", 1)[1]
+    async with session_scope() as db:
+        user = await get_or_create_user(db, callback.from_user)
+        try:
+            order = await order_service.user_cancel_order(db, order_id=order_id, user_id=user.id)
+        except AppError as err:
+            await callback.answer(err.user_message, show_alert=True)
+            return
+        card_text = order_service.format_order_card(order)
+
+    try:
+        await callback.message.edit_text(card_text)
+    except TelegramBadRequest:
+        await callback.message.answer(card_text)
+    await callback.answer("✅ অর্ডার বাতিল করা হয়েছে, টাকা ফেরত দেওয়া হয়েছে।")
+
+
+@router.callback_query(F.data.startswith("rate_order:"))
+async def rate_order(callback: CallbackQuery):
+    _, order_id, rating_str = callback.data.split(":", 2)
+    async with session_scope() as db:
+        user = await get_or_create_user(db, callback.from_user)
+        try:
+            await review_service.submit_rating(db, order_id=order_id, user_id=user.id, rating=int(rating_str))
+        except AppError as err:
+            await callback.answer(err.user_message, show_alert=True)
+            return
+
+    stars = "⭐" * int(rating_str)
+    try:
+        await callback.message.edit_text(f"ধন্যবাদ! আপনার রেটিং: {stars}", reply_markup=review_comment_kb(order_id))
+    except TelegramBadRequest:
+        pass
+    await callback.answer("✅ রেটিং সংরক্ষণ করা হয়েছে")
+
+
+@router.callback_query(F.data.startswith("review_comment:"))
+async def ask_review_comment(callback: CallbackQuery, state: FSMContext):
+    order_id = callback.data.split(":", 1)[1]
+    await state.set_state(ReviewStates.waiting_comment)
+    await state.update_data(review_order_id=order_id)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except TelegramBadRequest:
+        pass
+    await callback.message.answer("💬 আপনার মন্তব্য লিখুন:", reply_markup=cancel_kb())
+    await callback.answer()
+
+
+@router.message(ReviewStates.waiting_comment, F.text)
+async def save_review_comment(message: Message, state: FSMContext):
+    data = await state.get_data()
+    await state.clear()
+    async with session_scope() as db:
+        user = await get_or_create_user(db, message.from_user)
+        await review_service.add_comment(
+            db, order_id=data["review_order_id"], user_id=user.id, comment=message.text.strip(),
+        )
+    await message.answer("✅ ধন্যবাদ, আপনার মন্তব্যের জন্য!", reply_markup=main_menu_kb())
 
 
 @router.callback_query(F.data == "go_menu")

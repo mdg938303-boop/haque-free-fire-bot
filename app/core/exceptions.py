@@ -82,3 +82,13 @@ class PromoCodeMinOrderError(AppError):
 class InsufficientPointsError(AppError):
     code = "INSUFFICIENT_POINTS"
     user_message = "❌ আপনার পর্যাপ্ত লয়্যালটি পয়েন্ট নেই।"
+
+
+class OrderNotCancelableError(AppError):
+    code = "ORDER_NOT_CANCELABLE"
+    user_message = "❌ এই অর্ডারটি এখন আর বাতিল করা যাবে না (হয় সময় পার হয়ে গেছে, নয়তো ইতিমধ্যে সম্পন্ন/বাতিল হয়ে গেছে)।"
+
+
+class ReviewNotAllowedError(AppError):
+    code = "REVIEW_NOT_ALLOWED"
+    user_message = "❌ শুধু সম্পন্ন হওয়া অর্ডারের জন্য রেটিং দেওয়া যায়।"

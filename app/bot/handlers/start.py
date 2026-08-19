@@ -8,7 +8,7 @@ from app.models import User, Wallet, Referral
 from app.services import wallet_service, referral_service
 from app.services.settings_service import get_setting
 from app.core.security import generate_referral_code
-from app.bot.keyboards import main_menu_kb, support_kb
+from app.bot.keyboards import main_menu_kb, support_kb, support_menu_kb
 
 router = Router(name="start")
 
@@ -106,8 +106,8 @@ async def support_handler(message: Message):
         general = await get_setting(db, "general")
     support_username = general.get("support_username") or "support"
     await message.answer(
-        "📞 যেকোনো সমস্যায় আমাদের সাপোর্টে যোগাযোগ করুন।",
-        reply_markup=support_kb(support_username),
+        "📞 যেকোনো সমস্যায় আমাদের সাপোর্টে যোগাযোগ করুন, অথবা বটের ভেতরেই একটা টিকেট খুলুন।",
+        reply_markup=support_menu_kb(support_username),
     )
 
 

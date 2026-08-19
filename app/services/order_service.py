@@ -18,6 +18,7 @@ Steps 6-9 run inside one DB transaction per attempt so a crash between "wallet d
 and "provider order created" always leaves an inspectable, retryable Order row instead of
 silently losing money.
 """
+from datetime import datetime, timezone
 from decimal import Decimal
 from uuid import UUID
 
@@ -31,10 +32,11 @@ from app.models import (
 )
 from app.providers.registry import get_adapter
 from app.services import wallet_service, loyalty_service
+from app.services.settings_service import get_setting
 from app.core.security import generate_order_number, generate_idempotency_key
 from app.core.exceptions import (
     PackageInactiveError, ValidationError, IdempotencyConflictError,
-    ProviderUnavailableError, OrderNotFoundError,
+    ProviderUnavailableError, OrderNotFoundError, OrderNotCancelableError,
 )
 
 
@@ -272,6 +274,42 @@ async def apply_status_update(db: AsyncSession, *, order: Order, new_status: Ord
 
     await loyalty_service.maybe_award_points(db, order=order)
     await db.flush()
+
+
+async def is_order_cancelable(db: AsyncSession, order: Order) -> bool:
+    if order.status not in (OrderStatus.PENDING, OrderStatus.PROCESSING):
+        return False
+    cfg = await get_setting(db, "topup")
+    window_seconds = int(cfg.get("cancel_window_seconds", 120))
+    age = (datetime.now(timezone.utc) - order.created_at).total_seconds()
+    return age <= window_seconds
+
+
+async def user_cancel_order(db: AsyncSession, *, order_id: UUID, user_id: UUID) -> Order:
+    """User-initiated cancel from the order card button. Only allowed for a short window
+    after creation (settings.topup.cancel_window_seconds) while the order is still
+    PENDING/PROCESSING -- this avoids cancelling something the provider may have already
+    fulfilled. Refunds the wallet just like a provider-side failure would."""
+    order = await db.get(Order, order_id)
+    if order is None or order.user_id != user_id:
+        raise OrderNotFoundError(internal_detail=f"order {order_id} not found for user {user_id}")
+    if not await is_order_cancelable(db, order):
+        raise OrderNotCancelableError(internal_detail=f"order {order.order_number} not cancelable, status={order.status.value}")
+
+    order.status = OrderStatus.CANCELED
+    order.error_message = "ইউজার নিজে অর্ডারটি বাতিল করেছেন।"
+    db.add(OrderLog(order_id=order.id, event="USER_CANCELED", detail={}))
+
+    if order.wallet_deducted and not order.refunded:
+        await wallet_service.credit_wallet(
+            db, user_id=order.user_id, amount=order.selling_price, txn_type=TransactionType.REFUND,
+            reference_type="order", reference_id=str(order.id),
+            note=f"Refund for user-cancelled order {order.order_number}",
+        )
+        order.refunded = True
+
+    await db.flush()
+    return order
 
 
 async def retry_failed_order(db: AsyncSession, *, order_id: UUID, admin_telegram_id: int) -> Order | None:

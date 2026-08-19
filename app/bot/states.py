@@ -15,6 +15,19 @@ class LoyaltyStates(StatesGroup):
     waiting_redeem_points = State()
 
 
+class SupportStates(StatesGroup):
+    waiting_new_ticket_message = State()
+    waiting_ticket_reply = State()
+
+
+class ReviewStates(StatesGroup):
+    waiting_comment = State()
+
+
+class AdminSupportStates(StatesGroup):
+    waiting_reply = State()
+
+
 class DepositStates(StatesGroup):
     waiting_amount = State()
     waiting_reference = State()
