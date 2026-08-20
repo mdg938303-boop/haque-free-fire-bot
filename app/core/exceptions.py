@@ -92,3 +92,28 @@ class OrderNotCancelableError(AppError):
 class ReviewNotAllowedError(AppError):
     code = "REVIEW_NOT_ALLOWED"
     user_message = "❌ শুধু সম্পন্ন হওয়া অর্ডারের জন্য রেটিং দেওয়া যায়।"
+
+
+class ResellerAuthError(AppError):
+    code = "RESELLER_AUTH_ERROR"
+    user_message = "❌ ইউজারনেম বা পাসওয়ার্ড ভুল। /start দিয়ে আবার চেষ্টা করুন।"
+
+
+class ResellerAlreadyBoundError(AppError):
+    code = "RESELLER_ALREADY_BOUND"
+    user_message = "❌ এই তথ্য ইতিমধ্যে অন্য একটি Telegram অ্যাকাউন্টে ব্যবহৃত হয়েছে।"
+
+
+class ResellerRevokedError(AppError):
+    code = "RESELLER_REVOKED"
+    user_message = "❌ আপনার Reseller অ্যাকাউন্টটি নিষ্ক্রিয় করা হয়েছে। Admin-এর সাথে যোগাযোগ করুন।"
+
+
+class ResellerUsernameTakenError(AppError):
+    code = "RESELLER_USERNAME_TAKEN"
+    user_message = "❌ এই ইউজারনেম আগে থেকেই ব্যবহৃত হচ্ছে, অন্য একটা দিন।"
+
+
+class ResellerPriceNotSetError(AppError):
+    code = "RESELLER_PRICE_NOT_SET"
+    user_message = "❌ এই প্যাকেজের জন্য আপনার Reseller মূল্য এখনো নির্ধারণ করা হয়নি। Admin-এর সাথে যোগাযোগ করুন।"

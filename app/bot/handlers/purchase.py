@@ -8,7 +8,7 @@ from sqlalchemy import select, update
 
 from app.database import session_scope
 from app.models import Package, Order
-from app.services import order_service, wallet_service, vip_service, promo_service, review_service
+from app.services import order_service, wallet_service, vip_service, promo_service, review_service, reseller_service
 from app.core.exceptions import AppError
 from app.bot.states import PurchaseStates, ReviewStates
 from app.bot.keyboards import (
@@ -26,6 +26,7 @@ async def show_packages(message: Message):
         packages = (await db.execute(
             select(Package).where(Package.is_active == True).order_by(Package.sort_order.asc())  # noqa: E712
         )).scalars().all()
+        packages = await reseller_service.visible_packages_for(db, telegram_id=message.from_user.id, all_packages=packages)
 
     if not packages:
         await message.answer("⚠️ এই মুহূর্তে কোনো প্যাকেজ উপলব্ধ নেই।")
@@ -57,12 +58,19 @@ async def _show_confirmation(
 
         user = await get_or_create_user(db, tg_user)
 
-        base_price = package.selling_price
+        customer_reference_price = package.selling_price
+        try:
+            reseller_base_price = await reseller_service.get_base_price(db, telegram_id=tg_user.id, package=package)
+        except AppError as err:
+            await state.clear()
+            await target.answer(err.user_message, reply_markup=main_menu_kb())
+            return
+
         vip_tier = await vip_service.get_applicable_tier(db, user_id=user.id)
         vip_discount_percent = vip_tier.discount_percent if vip_tier else None
         price_after_vip = (
-            (base_price * (Decimal("100") - vip_discount_percent) / Decimal("100")).quantize(Decimal("0.01"))
-            if vip_discount_percent else base_price
+            (reseller_base_price * (Decimal("100") - vip_discount_percent) / Decimal("100")).quantize(Decimal("0.01"))
+            if vip_discount_percent else reseller_base_price
         )
 
         promo_discount = Decimal("0")
@@ -78,7 +86,7 @@ async def _show_confirmation(
                 # fall through with no promo applied rather than blocking the whole purchase
 
         final_price = max(price_after_vip - promo_discount, Decimal("0"))
-        discount_amount = base_price - final_price
+        discount_amount = customer_reference_price - final_price
 
         await state.update_data(
             package_id=str(package.id), uid=uid, player_name=player_name,
@@ -91,7 +99,7 @@ async def _show_confirmation(
 
         lines = [f"💎 Package: {package.diamond_amount} Diamonds", "", f"🆔 UID: {uid}\n👤 Player: {player_name}", ""]
         if discount_amount > 0:
-            lines.append(f"💵 মূল্য: ৳{base_price:.0f} → ছাড়ের পর ৳{final_price:.0f}")
+            lines.append(f"💵 মূল্য: ৳{customer_reference_price:.0f} → ছাড়ের পর ৳{final_price:.0f}")
             bits = []
             if vip_discount_percent:
                 bits.append(f"VIP {vip_discount_percent:.0f}%")
@@ -195,11 +203,19 @@ async def confirm_purchase(callback: CallbackQuery, state: FSMContext):
             await callback.answer()
             return
 
+        try:
+            reseller_base_price = await reseller_service.get_base_price(db, telegram_id=callback.from_user.id, package=package)
+        except AppError as err:
+            await callback.message.answer(err.user_message, reply_markup=main_menu_kb())
+            await callback.answer()
+            return
+        customer_reference_price = package.selling_price
+
         promo_obj = None
         if promo_code:
             vip_only_price = (
-                (package.selling_price * (Decimal("100") - vip_discount_percent) / Decimal("100")).quantize(Decimal("0.01"))
-                if vip_discount_percent else package.selling_price
+                (reseller_base_price * (Decimal("100") - vip_discount_percent) / Decimal("100")).quantize(Decimal("0.01"))
+                if vip_discount_percent else reseller_base_price
             )
             try:
                 promo_obj, _ = await promo_service.validate_and_price(
@@ -210,7 +226,7 @@ async def confirm_purchase(callback: CallbackQuery, state: FSMContext):
                 # proceed at the VIP-only price rather than blocking the purchase entirely.
                 promo_code = None
                 final_price = vip_only_price
-                discount_amount = package.selling_price - vip_only_price
+                discount_amount = customer_reference_price - vip_only_price
 
         try:
             player_name, provider_product, provider = await order_service.validate_uid_for_package(

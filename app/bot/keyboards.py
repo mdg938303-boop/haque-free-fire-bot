@@ -88,10 +88,10 @@ def admin_menu_kb() -> ReplyKeyboardMarkup:
         [KeyboardButton(text="📦 Packages"), KeyboardButton(text="🛒 Orders")],
         [KeyboardButton(text="💳 Deposits"), KeyboardButton(text="👥 Users")],
         [KeyboardButton(text="🏷️ Promo Codes"), KeyboardButton(text="👑 VIP Tiers")],
-        [KeyboardButton(text="🎫 Support Tickets"), KeyboardButton(text="⭐ Reviews")],
-        [KeyboardButton(text="🚩 Flagged Users"), KeyboardButton(text="💰 Finance")],
-        [KeyboardButton(text="📢 Broadcast"), KeyboardButton(text="⚙️ Settings")],
-        [KeyboardButton(text="📝 Logs")],
+        [KeyboardButton(text="🏪 Resellers"), KeyboardButton(text="🎫 Support Tickets")],
+        [KeyboardButton(text="⭐ Reviews"), KeyboardButton(text="🚩 Flagged Users")],
+        [KeyboardButton(text="💰 Finance"), KeyboardButton(text="📢 Broadcast")],
+        [KeyboardButton(text="⚙️ Settings"), KeyboardButton(text="📝 Logs")],
         [KeyboardButton(text="🔙 User মেনুতে ফিরুন")],
     ]
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
@@ -420,3 +420,91 @@ def admin_export_menu_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="💳 Deposits (30 দিন)", callback_data="admin_export:deposits:30")],
         [InlineKeyboardButton(text="💳 Deposits (সব)", callback_data="admin_export:deposits:all")],
     ])
+
+
+# =========================================================== ONBOARDING ====
+def onboarding_choice_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🏠 Customer", callback_data="onboard_customer")],
+        [InlineKeyboardButton(text="🏪 Reseller Login", callback_data="onboard_reseller")],
+    ])
+
+
+def reseller_login_or_apply_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔑 Login", callback_data="reseller_login_start")],
+        [InlineKeyboardButton(text="📝 তথ্য নেই? আবেদন করুন", callback_data="reseller_apply_start")],
+        [InlineKeyboardButton(text="🔙 ফিরে যান", callback_data="onboard_back")],
+    ])
+
+
+def reseller_apply_only_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔑 আমার Reseller তথ্য আছে (Login)", callback_data="reseller_login_start")],
+        [InlineKeyboardButton(text="📝 Reseller হতে চাই (আবেদন)", callback_data="reseller_apply_start")],
+    ])
+
+
+def reseller_apply_admin_kb(application_id) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Approve", callback_data=f"resapp_approve:{application_id}"),
+        InlineKeyboardButton(text="❌ Reject", callback_data=f"resapp_reject:{application_id}"),
+    ]])
+
+
+# ======================================================= ADMIN: RESELLERS ==
+def admin_resellers_menu_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Add Reseller", callback_data="res_add")],
+        [InlineKeyboardButton(text="📋 Reseller List", callback_data="res_list")],
+        [InlineKeyboardButton(text="📝 Pending Applications", callback_data="res_apps")],
+    ])
+
+
+def admin_resellers_list_kb(resellers: list) -> InlineKeyboardMarkup:
+    rows = []
+    for r in resellers:
+        status = "🟢" if r.status == "ACTIVE" else "🔴"
+        bound = "🔗" if r.telegram_id else "⚪"
+        rows.append([InlineKeyboardButton(text=f"{status}{bound} {r.username}", callback_data=f"res_v:{r.id}")])
+    if not rows:
+        rows = [[InlineKeyboardButton(text="(কোনো Reseller নেই)", callback_data="noop")]]
+    rows.append([InlineKeyboardButton(text="🔙 Resellers Menu", callback_data="res_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_reseller_detail_kb(reseller) -> InlineKeyboardMarkup:
+    toggle_text = "🔴 Revoke" if reseller.status == "ACTIVE" else "🟢 Reactivate"
+    pricing_label = f"💲 Pricing: {reseller.pricing_method}"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=pricing_label, callback_data=f"res_pricing:{reseller.id}")],
+        [InlineKeyboardButton(text="🔑 Reset Password", callback_data=f"res_reset_pw:{reseller.id}")],
+        [InlineKeyboardButton(text=toggle_text, callback_data=f"res_toggle:{reseller.id}")],
+        [InlineKeyboardButton(text="🔙 Reseller List", callback_data="res_list")],
+    ])
+
+
+def admin_reseller_pricing_method_kb(reseller_id) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="% Flat Percent", callback_data=f"res_pm:{reseller_id}:FLAT_PERCENT")],
+        [InlineKeyboardButton(text="💲 Custom Price per Package", callback_data=f"res_pm:{reseller_id}:CUSTOM")],
+        [InlineKeyboardButton(text="🔙 ফিরে যান", callback_data=f"res_v:{reseller_id}")],
+    ])
+
+
+def admin_reseller_custom_prices_kb(packages: list, priced_map: dict) -> InlineKeyboardMarkup:
+    rows = []
+    for p in packages:
+        price = priced_map.get(p.id)
+        label = f"{p.diamond_amount} Diamonds — {'৳' + str(price) if price is not None else 'সেট করা হয়নি'}"
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"res_cp:{p.id}")])
+    rows.append([InlineKeyboardButton(text="🔙 ফিরে যান", callback_data="res_cp_back")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_reseller_applications_kb(applications: list) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=f"📝 TG:{a.telegram_id}", callback_data=f"resapp_v:{a.id}")] for a in applications]
+    if not rows:
+        rows = [[InlineKeyboardButton(text="(কোনো Pending আবেদন নেই)", callback_data="noop")]]
+    rows.append([InlineKeyboardButton(text="🔙 Resellers Menu", callback_data="res_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)

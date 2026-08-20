@@ -9,8 +9,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from app.config import get_settings
 from app.core.logging import setup_logging
 from app.bot.handlers import (
-    admin, admin_promo, admin_support, start, uid_check, purchase, wallet, deposit, orders, loyalty, support,
-    bulk_purchase,
+    admin, admin_promo, admin_support, admin_reseller, start, uid_check, purchase, wallet, deposit, orders,
+    loyalty, support, bulk_purchase, reseller_onboarding,
 )
 from app.services.order_polling_service import poll_open_orders
 from app.services.broadcast_service import dispatch_due as dispatch_due_broadcasts
@@ -27,7 +27,9 @@ def build_dispatcher() -> Dispatcher:
     dp.include_router(admin.router)
     dp.include_router(admin_promo.router)
     dp.include_router(admin_support.router)
+    dp.include_router(admin_reseller.router)
     dp.include_router(start.router)
+    dp.include_router(reseller_onboarding.router)
     dp.include_router(uid_check.router)
     dp.include_router(purchase.router)
     dp.include_router(bulk_purchase.router)

@@ -2,6 +2,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Deposit, DepositStatus, TransactionType, AdminLog
@@ -24,7 +25,13 @@ async def create_deposit(
         status=DepositStatus.PENDING,
     )
     db.add(deposit)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        raise AppError(
+            internal_detail=f"duplicate transaction_reference {transaction_reference!r} for payment_method {payment_method_id}",
+            user_message="❌ এই Transaction ID/Reference দিয়ে ইতিমধ্যে একটি ডিপোজিট জমা দেওয়া হয়েছে। ভুল হলে সঠিক Reference দিয়ে আবার চেষ্টা করুন, অথবা সাপোর্টে যোগাযোগ করুন।",
+        )
     return deposit
 
 

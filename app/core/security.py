@@ -29,6 +29,28 @@ def mask_secret(plaintext: str, visible: int = 4) -> str:
     return "•" * (len(plaintext) - visible) + plaintext[-visible:]
 
 
+# -------------------------------------------------------- password hash ---
+def hash_password(password: str) -> str:
+    """PBKDF2-HMAC-SHA256, stdlib only (no bcrypt/passlib) so this never risks a native
+    build failure on Render's free tier. Format: pbkdf2_sha256$<iterations>$<salt_hex>$<hash_hex>"""
+    iterations = 260_000
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), iterations)
+    return f"pbkdf2_sha256${iterations}${salt}${digest.hex()}"
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    try:
+        algo, iterations_s, salt, hex_digest = hashed.split("$")
+        if algo != "pbkdf2_sha256":
+            return False
+        iterations = int(iterations_s)
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), iterations)
+        return hmac.compare_digest(digest.hex(), hex_digest)
+    except (ValueError, AttributeError):
+        return False
+
+
 # --------------------------------------------------------------- misc -----
 def generate_order_number() -> str:
     return f"FF{datetime.now(timezone.utc).strftime('%y%m%d%H%M%S')}{secrets.token_hex(2).upper()}"

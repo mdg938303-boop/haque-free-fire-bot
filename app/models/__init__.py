@@ -411,3 +411,48 @@ class ScheduledBroadcast(Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sent_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     failed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+# ---------------------------------------------------------- reseller system
+class ResellerAccount(Base):
+    """Created ONLY by an admin (directly, or after approving a ResellerApplication).
+    Not bound to a Telegram account until the holder logs in with the right
+    username+password for the first time -- see reseller_service.authenticate().
+    session_active flips back to False every time the bound user runs /start, so they
+    must re-enter their password each session (per spec) before reseller pricing applies."""
+    __tablename__ = "reseller_accounts"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
+    pricing_method: Mapped[str] = mapped_column(String(20), default="FLAT_PERCENT", nullable=False)  # FLAT_PERCENT | CUSTOM
+    flat_discount_percent: Mapped[Decimal | None] = mapped_column(Numeric(5, 2))
+    status: Mapped[str] = mapped_column(String(20), default="ACTIVE", nullable=False)  # ACTIVE | REVOKED
+    session_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by_admin_telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    bound_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ResellerPackagePrice(Base):
+    __tablename__ = "reseller_package_prices"
+    __table_args__ = (UniqueConstraint("reseller_account_id", "package_id", name="uq_reseller_package_price"),)
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    reseller_account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("reseller_accounts.id"), nullable=False, index=True)
+    package_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("packages.id"), nullable=False)
+    custom_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+
+class ResellerApplication(Base):
+    __tablename__ = "reseller_applications"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    message: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="PENDING", nullable=False)  # PENDING | APPROVED | REJECTED
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by_admin_telegram_id: Mapped[int | None] = mapped_column(BigInteger)

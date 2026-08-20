@@ -24,6 +24,24 @@ class ReviewStates(StatesGroup):
     waiting_comment = State()
 
 
+class OnboardingStates(StatesGroup):
+    waiting_reseller_username = State()
+    waiting_reseller_password = State()
+
+
+class ResellerApplyStates(StatesGroup):
+    waiting_message = State()
+
+
+class AdminResellerStates(StatesGroup):
+    waiting_username = State()
+    waiting_password = State()
+    waiting_flat_percent = State()
+    waiting_custom_price = State()
+    waiting_reset_password = State()
+    waiting_reject_reason = State()
+
+
 class AdminSupportStates(StatesGroup):
     waiting_reply = State()
 

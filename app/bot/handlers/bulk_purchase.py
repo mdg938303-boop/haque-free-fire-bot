@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.database import session_scope
 from app.models import Package
-from app.services import order_service, wallet_service, vip_service
+from app.services import order_service, wallet_service, vip_service, reseller_service
 from app.services.settings_service import get_setting
 from app.core.exceptions import AppError
 from app.bot.states import BulkPurchaseStates
@@ -23,6 +23,7 @@ async def bulk_start(message: Message):
         packages = (await db.execute(
             select(Package).where(Package.is_active == True).order_by(Package.sort_order.asc())  # noqa: E712
         )).scalars().all()
+        packages = await reseller_service.visible_packages_for(db, telegram_id=message.from_user.id, all_packages=packages)
     if not packages:
         await message.answer("⚠️ এই মুহূর্তে কোনো প্যাকেজ উপলব্ধ নেই।")
         return
@@ -77,11 +78,17 @@ async def bulk_uids_received(message: Message, state: FSMContext):
             return
 
         user = await get_or_create_user(db, message.from_user)
+        try:
+            reseller_base_price = await reseller_service.get_base_price(db, telegram_id=message.from_user.id, package=package)
+        except AppError as err:
+            await state.clear()
+            await message.answer(err.user_message, reply_markup=main_menu_kb())
+            return
         vip_tier = await vip_service.get_applicable_tier(db, user_id=user.id)
         vip_discount_percent = vip_tier.discount_percent if vip_tier else None
         unit_price = (
-            (package.selling_price * (Decimal("100") - vip_discount_percent) / Decimal("100")).quantize(Decimal("0.01"))
-            if vip_discount_percent else package.selling_price
+            (reseller_base_price * (Decimal("100") - vip_discount_percent) / Decimal("100")).quantize(Decimal("0.01"))
+            if vip_discount_percent else reseller_base_price
         )
 
         valid, invalid = [], []
@@ -107,8 +114,8 @@ async def bulk_uids_received(message: Message, state: FSMContext):
     await state.set_state(BulkPurchaseStates.confirming)
 
     lines = [f"🎁 <b>বাল্ক অর্ডার সামারি</b>\n", f"💎 Package: {package.diamond_amount} Diamonds"]
-    if vip_discount_percent:
-        lines.append(f"🏷️ VIP ছাড়: {vip_discount_percent:.0f}% (প্রতি UID: ৳{package.selling_price:.0f} → ৳{unit_price:.0f})")
+    if unit_price != package.selling_price:
+        lines.append(f"🏷️ ছাড়সহ প্রতি UID: ৳{package.selling_price:.0f} → ৳{unit_price:.0f}")
     lines.append(f"\n✅ বৈধ UID ({len(valid)}টি):")
     for v in valid:
         lines.append(f"  • {v['uid']} — {v['player_name']}")
