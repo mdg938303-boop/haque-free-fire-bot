@@ -8,6 +8,7 @@ DEFAULTS = {
     "referral": {"enabled": False, "bonus_amount": "0", "min_deposit": "0"},
     "topup": {"order_timeout": 120, "retry_limit": 3, "auto_retry": False, "cancel_window_seconds": 120, "max_bulk_uids": 20},
     "loyalty": {"cashback_percent": "0", "redeem_rate": "10"},  # redeem_rate = points needed per ৳1
+    "fraud": {"rejected_deposit_threshold": 3, "rejected_deposit_window_hours": 24},
 }
 
 

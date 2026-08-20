@@ -63,7 +63,11 @@ async def approve_deposit(db: AsyncSession, *, deposit_id: UUID, admin_telegram_
     return deposit
 
 
-async def reject_deposit(db: AsyncSession, *, deposit_id: UUID, admin_telegram_id: int, reason: str | None) -> Deposit:
+async def reject_deposit(
+    db: AsyncSession, *, deposit_id: UUID, admin_telegram_id: int, reason: str | None,
+) -> tuple[Deposit, bool]:
+    """Returns (deposit, newly_flagged) -- newly_flagged is True only the moment a user
+    crosses the fraud threshold from this rejection, so the caller can notify admins once."""
     deposit = (await db.execute(select(Deposit).where(Deposit.id == deposit_id).with_for_update())).scalar_one_or_none()
     if deposit is None:
         raise AppError(internal_detail="deposit not found", user_message="ডিপোজিট খুঁজে পাওয়া যায়নি।")
@@ -81,4 +85,8 @@ async def reject_deposit(db: AsyncSession, *, deposit_id: UUID, admin_telegram_i
         old_value={"status": "PENDING"}, new_value={"status": "REJECTED", "reason": reason},
     ))
     await db.flush()
-    return deposit
+
+    from app.services import fraud_service
+    newly_flagged = await fraud_service.check_deposit_fraud(db, user_id=deposit.user_id)
+
+    return deposit, newly_flagged

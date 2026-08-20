@@ -35,6 +35,9 @@ async def init_db() -> None:
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS loyalty_awarded BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE orders ADD COLUMN IF NOT EXISTS review_prompted BOOLEAN NOT NULL DEFAULT FALSE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS loyalty_points INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN NOT NULL DEFAULT FALSE",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS flag_reason VARCHAR(255)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS flagged_at TIMESTAMPTZ",
             "ALTER TABLE wallets ADD COLUMN IF NOT EXISTS total_cashback NUMERIC(14,2) NOT NULL DEFAULT 0",
             "ALTER TYPE transaction_type ADD VALUE IF NOT EXISTS 'CASHBACK'",
         ):

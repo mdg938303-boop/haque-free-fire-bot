@@ -89,8 +89,9 @@ def admin_menu_kb() -> ReplyKeyboardMarkup:
         [KeyboardButton(text="💳 Deposits"), KeyboardButton(text="👥 Users")],
         [KeyboardButton(text="🏷️ Promo Codes"), KeyboardButton(text="👑 VIP Tiers")],
         [KeyboardButton(text="🎫 Support Tickets"), KeyboardButton(text="⭐ Reviews")],
-        [KeyboardButton(text="💰 Finance"), KeyboardButton(text="📢 Broadcast")],
-        [KeyboardButton(text="⚙️ Settings"), KeyboardButton(text="📝 Logs")],
+        [KeyboardButton(text="🚩 Flagged Users"), KeyboardButton(text="💰 Finance")],
+        [KeyboardButton(text="📢 Broadcast"), KeyboardButton(text="⚙️ Settings")],
+        [KeyboardButton(text="📝 Logs")],
         [KeyboardButton(text="🔙 User মেনুতে ফিরুন")],
     ]
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
@@ -212,10 +213,13 @@ def admin_deposit_actions_kb(deposit_id) -> InlineKeyboardMarkup:
 
 def admin_user_actions_kb(user) -> InlineKeyboardMarkup:
     ban_text = "✅ Unban" if user.is_banned else "🚫 Ban"
-    return InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [InlineKeyboardButton(text="➕/➖ Adjust Balance", callback_data=f"admin_user_adjust:{user.id}")],
         [InlineKeyboardButton(text=ban_text, callback_data=f"admin_user_ban_toggle:{user.id}")],
-    ])
+    ]
+    if user.is_flagged:
+        rows.append([InlineKeyboardButton(text="🚩 Unflag", callback_data=f"admin_user_unflag:{user.id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def admin_balance_direction_kb() -> InlineKeyboardMarkup:
@@ -399,3 +403,20 @@ def bulk_confirm_kb() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="✅ Confirm Bulk Purchase", callback_data="bulk_confirm"),
         InlineKeyboardButton(text="❌ Cancel", callback_data="bulk_cancel"),
     ]])
+
+
+# ============================================================ ADMIN: PHASE5
+def dashboard_extra_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📈 বিস্তারিত চার্ট দেখুন", callback_data="admin_dashboard_chart")],
+        [InlineKeyboardButton(text="📤 Export (CSV)", callback_data="admin_dashboard_export")],
+    ])
+
+
+def admin_export_menu_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📦 Orders (30 দিন)", callback_data="admin_export:orders:30")],
+        [InlineKeyboardButton(text="📦 Orders (সব)", callback_data="admin_export:orders:all")],
+        [InlineKeyboardButton(text="💳 Deposits (30 দিন)", callback_data="admin_export:deposits:30")],
+        [InlineKeyboardButton(text="💳 Deposits (সব)", callback_data="admin_export:deposits:all")],
+    ])

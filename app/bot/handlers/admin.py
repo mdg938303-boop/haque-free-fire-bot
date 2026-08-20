@@ -13,7 +13,7 @@ from uuid import UUID
 from aiogram import Router, F
 from aiogram.filters import Command, BaseFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from sqlalchemy import select, func, desc, or_
 
 from app.config import get_settings
@@ -23,7 +23,10 @@ from app.models import (
     ApiProvider, Package, ProviderProduct, Referral, AdminLog, WalletTransaction,
     TransactionType, TransactionDirection,
 )
-from app.services import wallet_service, provider_service, deposit_service, order_service, broadcast_service
+from app.services import (
+    wallet_service, provider_service, deposit_service, order_service, broadcast_service,
+    fraud_service, analytics_service, export_service,
+)
 from app.services.settings_service import get_setting, upsert_setting
 from app.core.security import encrypt_secret
 from app.core.exceptions import AppError
@@ -40,6 +43,7 @@ from app.bot.keyboards import (
     admin_deposit_actions_kb, admin_user_actions_kb, admin_balance_direction_kb,
     admin_broadcast_target_kb, admin_settings_menu_kb, admin_payment_methods_kb,
     admin_broadcast_schedule_choice_kb, admin_scheduled_broadcasts_list_kb,
+    dashboard_extra_kb, admin_export_menu_kb,
 )
 
 settings = get_settings()
@@ -107,7 +111,60 @@ async def admin_dashboard(message: Message):
         f"💳 Pending Deposits: {pending_deposits}\n\n"
         f"🔌 <b>Providers</b>\n{provider_lines}"
     )
-    await message.answer(text, parse_mode="HTML")
+    await message.answer(text, parse_mode="HTML", reply_markup=dashboard_extra_kb())
+
+
+@router.callback_query(F.data == "admin_dashboard_chart")
+async def admin_dashboard_chart(callback: CallbackQuery):
+    async with session_scope() as db:
+        rows = await analytics_service.daily_sales(db, days=7)
+        breakdown = await analytics_service.order_status_breakdown(db, days=30)
+        top = await analytics_service.top_packages(db, days=30, limit=5)
+        stats = await analytics_service.summary_stats(db, days=30)
+
+    chart = analytics_service.render_ascii_bar_chart(rows)
+    status_lines = "\n".join(f"  {k}: {v}" for k, v in breakdown.items()) or "  (কোনো ডেটা নেই)"
+    top_lines = "\n".join(f"  {i+1}. {name} — {count}টি (৳{rev:.0f})" for i, (name, count, rev) in enumerate(top)) or "  (কোনো ডেটা নেই)"
+
+    text = (
+        "📈 <b>গত ৭ দিনের বিক্রয় (৳)</b>\n\n"
+        f"<pre>{chart}</pre>\n\n"
+        "📊 <b>গত ৩০ দিনের সামারি</b>\n"
+        f"👥 নতুন ইউজার: {stats['new_users']}\n"
+        f"💰 রেভিনিউ: ৳{stats['revenue']:.0f}\n"
+        f"📦 সম্পন্ন অর্ডার: {stats['completed_orders']}\n"
+        f"💳 ডিপোজিট: ৳{stats['deposits_total']:.0f}\n"
+        f"📊 গড় অর্ডার মূল্য: ৳{stats['avg_order_value']:.0f}\n\n"
+        f"🗂️ <b>অর্ডার স্ট্যাটাস (৩০ দিন)</b>\n{status_lines}\n\n"
+        f"🏆 <b>টপ প্যাকেজ (৩০ দিন)</b>\n{top_lines}"
+    )
+    await callback.message.answer(text, parse_mode="HTML")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_dashboard_export")
+async def admin_dashboard_export_menu(callback: CallbackQuery):
+    await callback.message.answer("📤 কোনটা Export করতে চান?", reply_markup=admin_export_menu_kb())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("admin_export:"))
+async def admin_export_run(callback: CallbackQuery):
+    _, kind, period = callback.data.split(":", 2)
+    days = None if period == "all" else int(period)
+
+    async with session_scope() as db:
+        if kind == "orders":
+            buf = await export_service.orders_to_csv(db, days=days)
+            filename = f"orders_{period}.csv"
+        else:
+            buf = await export_service.deposits_to_csv(db, days=days)
+            filename = f"deposits_{period}.csv"
+
+    await callback.message.answer_document(
+        BufferedInputFile(buf.read(), filename=filename), caption=f"📤 Export: {kind} ({period})",
+    )
+    await callback.answer()
 
 
 # =============================================================== PROVIDERS =
@@ -590,12 +647,24 @@ async def admin_deposit_reject(callback: CallbackQuery):
     deposit_id = callback.data.split(":", 1)[1]
     async with session_scope() as db:
         try:
-            await deposit_service.reject_deposit(db, deposit_id=UUID(deposit_id), admin_telegram_id=callback.from_user.id, reason="Rejected by admin")
+            deposit, newly_flagged = await deposit_service.reject_deposit(
+                db, deposit_id=UUID(deposit_id), admin_telegram_id=callback.from_user.id, reason="Rejected by admin",
+            )
         except AppError as err:
             await callback.answer(err.user_message, show_alert=True)
             return
+        flag_reason, flagged_user_label = None, None
+        if newly_flagged:
+            user = await db.get(User, deposit.user_id)
+            flag_reason = user.flag_reason
+            flagged_user_label = f"@{user.telegram_username}" if user.telegram_username else f"ID {user.telegram_id}"
     await callback.message.edit_text(callback.message.text + "\n\n❌ Rejected")
     await callback.answer("❌ Rejected")
+    if newly_flagged:
+        await callback.message.answer(
+            f"🚩 <b>সন্দেহজনক কার্যকলাপ সনাক্ত হয়েছে</b>\n\nইউজার {flagged_user_label} স্বয়ংক্রিয়ভাবে ফ্ল্যাগ করা হয়েছে।\nকারণ: {flag_reason}\n\n👥 Users থেকে বিস্তারিত দেখুন।",
+            parse_mode="HTML",
+        )
 
 
 # =================================================================== USERS =
@@ -637,6 +706,8 @@ async def admin_users_lookup(message: Message, state: FSMContext):
         f"🎁 Referrals: {referral_count}\n"
         f"Status: {'🚫 Banned' if user.is_banned else '🟢 Active'}"
     )
+    if user.is_flagged:
+        text += f"\n🚩 <b>Flagged:</b> {user.flag_reason or 'সন্দেহজনক কার্যকলাপ'}"
     await message.answer(text, parse_mode="HTML", reply_markup=admin_user_actions_kb(user))
 
 
@@ -650,6 +721,30 @@ async def admin_user_ban_toggle(callback: CallbackQuery):
                          target_type="user", target_id=str(user.id), new_value={"is_banned": user.is_banned}))
     await callback.answer("✅ আপডেট হয়েছে")
     await callback.message.answer(f"{'🚫 Banned' if user.is_banned else '✅ Unbanned'}")
+
+
+@router.callback_query(F.data.startswith("admin_user_unflag:"))
+async def admin_user_unflag(callback: CallbackQuery):
+    user_id = callback.data.split(":", 1)[1]
+    async with session_scope() as db:
+        await fraud_service.unflag_user(db, user_id=UUID(user_id))
+        db.add(AdminLog(admin_telegram_id=callback.from_user.id, action="UNFLAG_USER", target_type="user", target_id=user_id))
+    await callback.answer("✅ Unflagged")
+    await callback.message.answer("🚩 Flag সরিয়ে ফেলা হয়েছে।")
+
+
+@router.message(F.text == "🚩 Flagged Users")
+async def admin_flagged_users(message: Message):
+    async with session_scope() as db:
+        users = await fraud_service.list_flagged_users(db)
+    if not users:
+        await message.answer("✅ কোনো flagged ইউজার নেই।")
+        return
+    lines = ["🚩 <b>Flagged Users</b>\n"]
+    for u in users:
+        label = f"@{u.telegram_username}" if u.telegram_username else f"ID {u.telegram_id}"
+        lines.append(f"• {label} — {u.flag_reason or '-'}")
+    await message.answer("\n".join(lines), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("admin_user_adjust:"))
